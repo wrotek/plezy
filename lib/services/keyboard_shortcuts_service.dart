@@ -192,6 +192,7 @@ class KeyboardShortcutsService extends ChangeNotifier {
     VoidCallback? onPreviousChapter, {
     required bool canControlPlayback,
     required bool canNavigateMediaItems,
+    VoidCallback? onPreviousSubtitleTrack,
     VoidCallback? onPlayPause,
     VoidCallback? onToggleShader,
     VoidCallback? onSkipMarker,
@@ -330,6 +331,8 @@ class KeyboardShortcutsService extends ChangeNotifier {
             onNextAudioTrack?.call();
           case ShortcutAction.subtitleTrackNext:
             onNextSubtitleTrack?.call();
+          case ShortcutAction.subtitleTrackPrevious:
+            onPreviousSubtitleTrack?.call();
           case ShortcutAction.chapterNext:
             onNextChapter?.call();
           case ShortcutAction.chapterPrevious:

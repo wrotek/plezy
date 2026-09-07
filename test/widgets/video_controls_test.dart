@@ -1857,12 +1857,12 @@ void main() {
       await tester.pump();
       expect(find.byIcon(Symbols.subtitles_rounded), findsOneWidget);
 
-      await tester.sendKeyEvent(LogicalKeyboardKey.keyS);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
       await tester.pump();
       expect(player.propertyValues, ['no']);
       expect(find.byIcon(Symbols.subtitles_off_rounded), findsOneWidget);
 
-      await tester.sendKeyEvent(LogicalKeyboardKey.keyS);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
       await tester.pump();
       expect(player.propertyValues, ['no'], reason: 'the latest toggle must wait for the in-flight native write');
       expect(find.byIcon(Symbols.subtitles_rounded), findsOneWidget);
@@ -1878,6 +1878,69 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(find.byIcon(Symbols.subtitles_off_rounded), findsOneWidget);
+      chrome.cancelAutoHide();
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('turns subtitles on by selecting a track when none is active', (tester) async {
+      LocaleSettings.setLocaleSync(AppLocale.en);
+      await initializeDateFormatting('en');
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      resetSharedPreferencesForTest();
+      SettingsService.resetForTesting();
+      final settings = await SettingsService.getInstance();
+      final player = _FakeSubtitleSelectionPlayer();
+      final volume = VideoVolumeController(player: player, settings: settings, initialVolume: 100);
+      final playbackState = PlaybackStateProvider();
+      final watchTogether = WatchTogetherProvider();
+      final chrome = PlayerChromeController();
+      final toast = PlayerToastController();
+      addTearDown(volume.dispose);
+      addTearDown(playbackState.dispose);
+      addTearDown(watchTogether.dispose);
+      addTearDown(chrome.dispose);
+      addTearDown(toast.dispose);
+      var cycles = 0;
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<PlaybackStateProvider>.value(value: playbackState),
+            ChangeNotifierProvider<WatchTogetherProvider>.value(value: watchTogether),
+          ],
+          child: MaterialApp(
+            theme: ThemeData(platform: TargetPlatform.macOS, extensions: const [testMonoTokens]),
+            home: Scaffold(
+              body: SizedBox(
+                width: 1200,
+                height: 800,
+                child: PlexVideoControls(
+                  player: player,
+                  volumeController: volume,
+                  metadata: testMediaItem(id: 'subtitle-selection'),
+                  toastController: toast,
+                  canNavigateMediaItems: false,
+                  chromeController: chrome,
+                  isLive: true,
+                  onCycleSubtitleTrack: () => cycles++,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Nothing is selected, so the shortcut must turn subtitles on rather than
+      // no-op. With no account profile in scope there is no preferred language,
+      // so it falls back to cycling, which advances from Off to the first track.
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+      await tester.pump();
+
+      expect(cycles, 1);
+      expect(player.propertyValues, isEmpty, reason: 'selecting a track is not a visibility write');
       chrome.cancelAutoHide();
       await tester.pumpWidget(const SizedBox.shrink());
     });
@@ -2378,6 +2441,65 @@ class _FakeSubtitleVisibilityPlayer implements Player {
     expect(name, 'sub-visibility');
     propertyValues.add(value);
     return writes[propertyValues.length - 1].future;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// A player with subtitle tracks available but none selected, for exercising
+/// the toggle's "turn them on" path.
+class _FakeSubtitleSelectionPlayer implements Player {
+  final List<String> propertyValues = [];
+  final List<SubtitleTrack> selected = [];
+
+  @override
+  String get playerType => 'mpv';
+
+  @override
+  PlayerState get state => PlayerState(
+    duration: const Duration(minutes: 45),
+    seekable: true,
+    tracks: const Tracks(
+      subtitle: [
+        SubtitleTrack.off,
+        SubtitleTrack(id: 'subtitle-1', language: 'eng'),
+        SubtitleTrack(id: 'subtitle-2', language: 'spa'),
+      ],
+    ),
+    track: const TrackSelection(subtitle: SubtitleTrack.off),
+  );
+
+  @override
+  PlayerStreams get streams => PlayerStreams(
+    playing: const Stream<bool>.empty(),
+    completed: const Stream<bool>.empty(),
+    buffering: const Stream<bool>.empty(),
+    position: const Stream<Duration>.empty(),
+    duration: const Stream<Duration>.empty(),
+    seekable: const Stream<bool>.empty(),
+    buffer: const Stream<Duration>.empty(),
+    volume: const Stream<double>.empty(),
+    rate: const Stream<double>.empty(),
+    tracks: const Stream<Tracks>.empty(),
+    track: const Stream<TrackSelection>.empty(),
+    log: const Stream<PlayerLog>.empty(),
+    error: const Stream<PlayerError>.empty(),
+    audioDevice: const Stream<AudioDevice>.empty(),
+    audioDevices: const Stream<List<AudioDevice>>.empty(),
+    bufferRanges: const Stream<List<BufferRange>>.empty(),
+    playbackRestart: const Stream<void>.empty(),
+    backendSwitched: const Stream<void>.empty(),
+  );
+
+  @override
+  Future<void> setProperty(String name, String value) async {
+    propertyValues.add(value);
+  }
+
+  @override
+  Future<void> selectSubtitleTrack(SubtitleTrack track) async {
+    selected.add(track);
   }
 
   @override

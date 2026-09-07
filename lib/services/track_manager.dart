@@ -451,13 +451,25 @@ class TrackManager {
   /// Cycle to the next subtitle track, save the preference, and return the
   /// track now playing so the caller can record it as the committed choice.
   /// Returns null when there was nothing to cycle.
-  SubtitleTrack? cycleSubtitleTrack() {
+  SubtitleTrack? cycleSubtitleTrack() => _cycleSubtitleTrack(1);
+
+  /// Cycle to the previous subtitle track, mirroring [cycleSubtitleTrack].
+  ///
+  /// Wrapping backwards past Off lands on the last track, so a viewer who
+  /// overshoots with the next-track shortcut can step straight back.
+  SubtitleTrack? cycleSubtitleTrackBackward() => _cycleSubtitleTrack(-1);
+
+  SubtitleTrack? _cycleSubtitleTrack(int step) {
     final tracks = player.state.tracks.subtitle.where((t) => t.id != 'auto').toList();
     if (tracks.isEmpty) return null;
 
     final current = player.state.track.subtitle;
     final currentIndex = tracks.indexWhere((t) => t.id == current?.id);
-    final nextIndex = (currentIndex + 1) % tracks.length;
+    // An unknown current track enters the list from whichever end the step
+    // comes from, so backwards starts at the last track rather than the second.
+    final nextIndex = currentIndex < 0
+        ? (step > 0 ? 0 : tracks.length - 1)
+        : (currentIndex + step) % tracks.length;
     final next = tracks[nextIndex];
     player.selectSubtitleTrack(next);
     unawaited(onSubtitleTrackSelectedByUser(next));

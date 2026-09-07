@@ -1596,6 +1596,52 @@ void main() {
     });
   });
 
+  group('cycleSubtitleTrackBackward', () {
+    _FakePlayer threeTrackPlayer({required SubtitleTrack selected}) => _FakePlayer(
+      tracks: const Tracks(
+        subtitle: [
+          SubtitleTrack.off,
+          SubtitleTrack(id: '1', language: 'eng'),
+          SubtitleTrack(id: '2', language: 'spa'),
+        ],
+      ),
+      track: TrackSelection(subtitle: selected),
+    );
+
+    test('steps back to the preceding track', () async {
+      await SettingsService.getInstance();
+      final player = threeTrackPlayer(selected: const SubtitleTrack(id: '2', language: 'spa'));
+      final mgr = _make(player: player);
+      addTearDown(mgr.dispose);
+
+      expect(mgr.cycleSubtitleTrackBackward()?.id, '1');
+      expect(player.selectedSubtitle.map((track) => track.id), ['1']);
+    });
+
+    test('wraps past Off to the last track', () async {
+      await SettingsService.getInstance();
+      final player = threeTrackPlayer(selected: SubtitleTrack.off);
+      final mgr = _make(player: player);
+      addTearDown(mgr.dispose);
+
+      // Off is index 0, so stepping back must wrap to the end rather than
+      // producing a negative index.
+      expect(mgr.cycleSubtitleTrackBackward()?.id, '2');
+      expect(player.selectedSubtitle.map((track) => track.id), ['2']);
+    });
+
+    test('no-op when no real subtitle tracks exist', () {
+      final player = _FakePlayer(
+        tracks: const Tracks(subtitle: [SubtitleTrack(id: 'auto')]),
+      );
+      final mgr = _make(player: player);
+      addTearDown(mgr.dispose);
+
+      expect(mgr.cycleSubtitleTrackBackward(), isNull);
+      expect(player.selectedSubtitle, isEmpty);
+    });
+  });
+
   group('cycleAudioTrack', () {
     test('no-op when fewer than 2 real audio tracks exist', () {
       final player = _FakePlayer(

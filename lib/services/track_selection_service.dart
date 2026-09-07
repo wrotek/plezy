@@ -765,7 +765,13 @@ class TrackSelectionService {
     return _findTrackByPreferredLanguage<AudioTrack>(availableTracks, preferredLanguage, (t) => t.language);
   }
 
-  SubtitleTrack? _findSubtitleTrackByProfile(
+  /// The first track whose language matches the profile's preferred subtitle
+  /// language, or null when the profile has no preference or nothing matches.
+  ///
+  /// Public for the same reason [findAudioTrackByProfile] is: the subtitle
+  /// shortcut needs the profile's language choice without running the whole
+  /// selection ladder.
+  SubtitleTrack? findSubtitleTrackByProfile(
     List<SubtitleTrack> availableTracks,
     MediaServerUserProfile profile, {
     bool forcedOnly = false,
@@ -821,13 +827,13 @@ class TrackSelectionService {
         break;
       case SubtitlePlaybackMode.onlyForced:
         selected =
-            _findSubtitleTrackByProfile(availableTracks, profile, forcedOnly: true) ??
+            findSubtitleTrackByProfile(availableTracks, profile, forcedOnly: true) ??
             _findForcedSubtitleTrack(availableTracks) ??
             SubtitleTrack.off;
         break;
       case SubtitlePlaybackMode.always:
         selected =
-            _findSubtitleTrackByProfile(availableTracks, profile) ??
+            findSubtitleTrackByProfile(availableTracks, profile) ??
             _findDefaultSubtitleTrack(availableTracks) ??
             _findFirstSubtitleTrack(availableTracks) ??
             SubtitleTrack.off;
@@ -835,12 +841,12 @@ class TrackSelectionService {
       case SubtitlePlaybackMode.smart:
         if (_audioMatchesProfile(selectedAudioTrack, profile)) {
           selected =
-              _findSubtitleTrackByProfile(availableTracks, profile, forcedOnly: true) ??
+              findSubtitleTrackByProfile(availableTracks, profile, forcedOnly: true) ??
               _findForcedSubtitleTrack(availableTracks) ??
               SubtitleTrack.off;
         } else {
           selected =
-              _findSubtitleTrackByProfile(availableTracks, profile) ??
+              findSubtitleTrackByProfile(availableTracks, profile) ??
               _findDefaultSubtitleTrack(availableTracks) ??
               _findFirstSubtitleTrack(availableTracks) ??
               SubtitleTrack.off;

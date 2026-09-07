@@ -310,6 +310,7 @@ extension _VideoPlayerBuildMethods on VideoPlayerScreenState {
                         onResetVideoZoom: _visualEffects.resetZoom,
                         onCycleAudioTrack: _cycleAudioTrack,
                         onCycleSubtitleTrack: _cycleSubtitleTrack,
+                        onCycleSubtitleTrackBackward: () => _cycleSubtitleTrack(backward: true),
                         onAudioTrackChanged: _onAudioTrackChanged,
                         onSubtitleTrackChanged: _onSubtitleTrackChanged,
                         onSecondarySubtitleTrackChanged: _onSecondarySubtitleTrackChanged,

@@ -23,10 +23,51 @@ extension _PlexVideoControlsTrackMethods on _PlexVideoControlsState {
       return;
     }
 
+    // Nothing selected yet, so there is no visibility to flip. Treat the
+    // shortcut as "turn subtitles on" and make the choice the viewer would have
+    // made by hand, rather than doing nothing and looking broken.
     final currentTrack = widget.player.state.track.subtitle;
-    if (currentTrack == null || currentTrack.id == SubtitleTrack.off.id) return;
+    if (currentTrack == null || currentTrack.id == SubtitleTrack.off.id) {
+      _enablePreferredSubtitleTrack();
+      return;
+    }
 
     _setSubtitleVisibility(false);
+  }
+
+  /// Select a subtitle track when the toggle is pressed with none active.
+  ///
+  /// Prefers the account's subtitle language so a multi-language release lands
+  /// on the expected track instead of whichever one happens to come first.
+  /// Falls back to cycling - which advances from Off to the first track - when
+  /// there is no profile, no language preference, or nothing matches it.
+  ///
+  /// Unlike hiding, this commits a real selection the server remembers; that is
+  /// the point here, since the viewer asked for subtitles rather than for a
+  /// transient peek.
+  void _enablePreferredSubtitleTrack() {
+    if (!widget.canControl) return;
+
+    final tracks = widget.player.state.tracks.subtitle
+        .where((track) => track.id != SubtitleTrack.auto.id && track.id != SubtitleTrack.off.id)
+        .toList();
+    if (tracks.isEmpty) return;
+
+    final profile = context.read<AccountPreferencesController?>()?.activePreferences;
+    final preferred = profile == null
+        ? null
+        : TrackSelectionService(
+            metadata: widget.metadata,
+            profileSettings: profile,
+          ).findSubtitleTrackByProfile(tracks, profile);
+
+    if (preferred == null) {
+      _nextSubtitleTrack();
+      return;
+    }
+
+    widget.player.selectSubtitleTrack(preferred);
+    _onSubtitleTrackChanged(preferred);
   }
 
   /// Whether the server burned the selected subtitle into the picture.
@@ -146,6 +187,11 @@ extension _PlexVideoControlsTrackMethods on _PlexVideoControlsState {
   void _nextSubtitleTrack() {
     if (!widget.canControl) return;
     widget.onCycleSubtitleTrack?.call();
+  }
+
+  void _previousSubtitleTrack() {
+    if (!widget.canControl) return;
+    widget.onCycleSubtitleTrackBackward?.call();
   }
 
   void _nextChapter() => _seekToNextChapter();

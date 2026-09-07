@@ -5666,6 +5666,9 @@ class Translations$hotkeys$actions$en {
 	/// en: 'Next Subtitle Track'
 	String get subtitleTrackNext => 'Next Subtitle Track';
 
+	/// en: 'Previous Subtitle Track'
+	String get subtitleTrackPrevious => 'Previous Subtitle Track';
+
 	/// en: 'Next Chapter'
 	String get chapterNext => 'Next Chapter';
 
@@ -7438,6 +7441,7 @@ extension on Translations {
 			'hotkeys.actions.subtitleToggle' => 'Toggle Subtitles',
 			'hotkeys.actions.audioTrackNext' => 'Next Audio Track',
 			'hotkeys.actions.subtitleTrackNext' => 'Next Subtitle Track',
+			'hotkeys.actions.subtitleTrackPrevious' => 'Previous Subtitle Track',
 			'hotkeys.actions.chapterNext' => 'Next Chapter',
 			'hotkeys.actions.chapterPrevious' => 'Previous Chapter',
 			'hotkeys.actions.episodeNext' => 'Next Episode',
@@ -7530,9 +7534,9 @@ extension on Translations {
 			'fileInfo.overallBitrate' => 'Overall Bitrate',
 			'fileInfo.path' => 'Path',
 			'fileInfo.fileName' => 'File Name',
-			'fileInfo.size' => 'Size',
 			_ => null,
 		} ?? switch (path) {
+			'fileInfo.size' => 'Size',
 			'fileInfo.totalSize' => 'Total Size',
 			'fileInfo.container' => 'Container',
 			'fileInfo.duration' => 'Duration',
@@ -8044,9 +8048,9 @@ extension on Translations {
 			'libraries.noFoldersFound' => 'No folders found',
 			'libraries.folders' => 'folders',
 			'libraries.tabs.recommended' => 'Recommended',
-			'libraries.tabs.browse' => 'Browse',
 			_ => null,
 		} ?? switch (path) {
+			'libraries.tabs.browse' => 'Browse',
 			'libraries.tabs.collections' => 'Collections',
 			'libraries.tabs.playlists' => 'Playlists',
 			'libraries.groupings.title' => 'Grouping',
@@ -8558,9 +8562,9 @@ extension on Translations {
 			'downloads.downloadingTooltip' => 'Downloading...',
 			'downloads.downloadingFilesTooltip' => ({required Object files}) => 'Downloading ${files}',
 			'downloads.noDownloadsTree' => 'No downloads',
-			'downloads.pauseAll' => 'Pause all',
 			_ => null,
 		} ?? switch (path) {
+			'downloads.pauseAll' => 'Pause all',
 			'downloads.resumeAll' => 'Resume all',
 			'downloads.deleteAll' => 'Delete all',
 			'downloads.selectVersion' => 'Select Version',

@@ -438,6 +438,7 @@
       "subtitleToggle": "Toggle Subtitles",
       "audioTrackNext": "Next Audio Track",
       "subtitleTrackNext": "Next Subtitle Track",
+      "subtitleTrackPrevious": "Previous Subtitle Track",
       "chapterNext": "Next Chapter",
       "chapterPrevious": "Previous Chapter",
       "episodeNext": "Next Episode",

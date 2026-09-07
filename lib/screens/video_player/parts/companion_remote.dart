@@ -4,14 +4,16 @@ part of '../../video_player_screen.dart';
 /// Stays on the State: the drain loop coalesces queued presses into
 /// [_switchPlaybackSource] reopens and is bound to the transition lease.
 extension _VideoPlayerCompanionRemoteMethods on VideoPlayerScreenState {
-  void _cycleSubtitleTrack() {
+  void _cycleSubtitleTrack({bool backward = false}) {
     final sourceTracks = _sourceSubtitleTracksForControls();
     if (!_isOfflinePlayback && sourceTracks.isNotEmpty) {
-      _pendingSubtitleCycleCount++;
+      // Signed, so a backwards press cancels a queued forward one instead of
+      // both being applied in sequence.
+      _pendingSubtitleCycleCount += backward ? -1 : 1;
       if (!_subtitleCycleDrainActive) unawaited(_drainSubtitleCycles());
       return;
     }
-    _cycleSubtitleTrackNatively();
+    _cycleSubtitleTrackNatively(backward: backward);
   }
 
   /// Cycle through the native track list, for playback with no source
@@ -22,8 +24,8 @@ extension _VideoPlayerCompanionRemoteMethods on VideoPlayerScreenState {
   /// choice is this screen's, and the episode carry-over reads it, so a cycle
   /// that lands on Off has to be recorded here or the next episode inherits
   /// the choice this one started with.
-  void _cycleSubtitleTrackNatively() {
-    final cycled = _trackManager?.cycleSubtitleTrack();
+  void _cycleSubtitleTrackNatively({bool backward = false}) {
+    final cycled = backward ? _trackManager?.cycleSubtitleTrackBackward() : _trackManager?.cycleSubtitleTrack();
     if (cycled != null) _rememberNativeSubtitleSelection(cycled);
   }
 
@@ -31,7 +33,7 @@ extension _VideoPlayerCompanionRemoteMethods on VideoPlayerScreenState {
     if (_subtitleCycleDrainActive) return;
     _subtitleCycleDrainActive = true;
     try {
-      while (mounted && _pendingSubtitleCycleCount > 0) {
+      while (mounted && _pendingSubtitleCycleCount != 0) {
         await _transitionGate.waitForIdle(() => mounted);
         if (!mounted || _pendingSubtitleCycleCount == 0) break;
 
@@ -41,8 +43,8 @@ extension _VideoPlayerCompanionRemoteMethods on VideoPlayerScreenState {
         final sourceTracks = _sourceSubtitleTracksForControls();
         if (_isOfflinePlayback || sourceTracks.isEmpty) {
           _pendingSubtitleCycleCount -= advances;
-          for (var i = 0; i < advances; i++) {
-            _cycleSubtitleTrackNatively();
+          for (var i = 0; i < advances.abs(); i++) {
+            _cycleSubtitleTrackNatively(backward: advances < 0);
           }
           continue;
         }

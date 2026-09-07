@@ -48,6 +48,7 @@ import '../../media/media_backend.dart';
 import '../../media/media_item.dart';
 import '../../media/stepped_seek.dart';
 import '../../models/livetv_capture_buffer.dart';
+import '../../providers/account_preferences_controller.dart';
 import '../../providers/multi_server_provider.dart';
 import '../../media/media_source_info.dart';
 import '../../models/transcode_quality_preset.dart';
@@ -59,6 +60,7 @@ import '../../services/device_adjustment_service.dart';
 import '../../services/scrub_preview_source.dart';
 import '../../services/scoped_player_prefs.dart';
 import '../../services/settings_service.dart';
+import '../../services/track_selection_service.dart';
 import '../../services/video_volume_controller.dart';
 import '../../utils/codec_utils.dart';
 import '../../utils/formatters.dart';
@@ -578,6 +580,7 @@ class PlexVideoControls extends StatefulWidget {
   final VoidCallback? onResetVideoZoom;
   final VoidCallback? onCycleAudioTrack;
   final VoidCallback? onCycleSubtitleTrack;
+  final VoidCallback? onCycleSubtitleTrackBackward;
   final Function(AudioTrack)? onAudioTrackChanged;
   final Function(SubtitleTrack)? onSubtitleTrackChanged;
   final Function(SubtitleTrack)? onSecondarySubtitleTrackChanged;
@@ -719,6 +722,7 @@ class PlexVideoControls extends StatefulWidget {
     this.onResetVideoZoom,
     this.onCycleAudioTrack,
     this.onCycleSubtitleTrack,
+    this.onCycleSubtitleTrackBackward,
     this.onAudioTrackChanged,
     this.onSubtitleTrackChanged,
     this.onSecondarySubtitleTrackChanged,
