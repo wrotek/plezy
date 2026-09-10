@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart' show Offset, kPrecisePointerHitSlop;
 import 'package:flutter/material.dart'
     show BuildContext, ListenableBuilder, MouseRegion, StatelessWidget, SystemMouseCursors, Widget;
 
@@ -26,6 +27,7 @@ class PlayerChromeController extends ChangeNotifier implements ValueListenable<b
   final Set<PlayerChromeHold> _holds = <PlayerChromeHold>{};
   final Stopwatch _pointerActivityStopwatch = Stopwatch()..start();
   int _lastPointerActivityMs = -1000;
+  Offset? _lastPointerActivityPosition;
 
   @override
   bool get value => _controlsVisible;
@@ -146,11 +148,38 @@ class PlayerChromeController extends ChangeNotifier implements ValueListenable<b
     }
   }
 
-  bool recordPointerActivity() {
+  /// Records a pointer event as viewer activity: shows the chrome and rearms
+  /// auto-hide. Returns whether the event counted as activity.
+  ///
+  /// [position] is the event's global position and [synthesized] marks an event
+  /// the engine manufactured rather than one the viewer produced. Both filter
+  /// out pointer traffic that is not a deliberate move:
+  ///
+  /// * A pointer removal reporting a location other than the last hover makes
+  ///   the engine synthesize a hover *ahead of* the remove
+  ///   (PointerDataPacketConverter, kRemove branch). iPadOS removes the pointer
+  ///   when it auto-hides an idle trackpad cursor, so that synthetic hover
+  ///   would raise the chrome again seconds after it faded, with nobody
+  ///   touching the trackpad — and on handhelds the removal itself cannot undo
+  ///   it, because the interaction region does not hide on exit there.
+  /// * iPadOS reports trackpad positions with sub-pixel precision, so a hand
+  ///   resting on the trackpad keeps hover events flowing. Movement under a
+  ///   precise pointer's hit slop is not a request to bring the chrome back.
+  ///
+  /// A caller with no positional event (a scroll wheel, say) passes neither and
+  /// always counts.
+  bool recordPointerActivity({Offset? position, bool synthesized = false}) {
+    if (synthesized) return false;
+    final lastPosition = _lastPointerActivityPosition;
+    if (position != null && lastPosition != null && (position - lastPosition).distance < kPrecisePointerHitSlop) {
+      return false;
+    }
+
     final nowMs = _pointerActivityStopwatch.elapsedMilliseconds;
     final shouldThrottle = _controlsVisible && nowMs - _lastPointerActivityMs < 120;
     if (shouldThrottle) return false;
     _lastPointerActivityMs = nowMs;
+    if (position != null) _lastPointerActivityPosition = position;
 
     show(restartAutoHide: false);
     _startAutoHideForCurrentPlaybackState();
@@ -238,7 +267,8 @@ class PlayerChromeInteractionRegion extends StatelessWidget {
       builder: (context, _) {
         return MouseRegion(
           cursor: controller.controlsVisible ? SystemMouseCursors.basic : SystemMouseCursors.none,
-          onHover: (_) => controller.recordPointerActivity(),
+          onHover: (event) =>
+              controller.recordPointerActivity(position: event.position, synthesized: event.synthesized),
           onExit: (_) {
             if (!hideOnExit) return;
             controller.cancelAutoHide();

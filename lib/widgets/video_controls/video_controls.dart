@@ -8,6 +8,7 @@ import 'package:flutter/gestures.dart'
         PointerCancelEvent,
         PointerDeviceKind,
         PointerDownEvent,
+        PointerHoverEvent,
         PointerMoveEvent,
         PointerScrollEvent,
         PointerSignalEvent,
@@ -1234,7 +1235,7 @@ class _PlexVideoControlsState extends State<PlexVideoControls>
             onPointerSignal: _handlePointerSignal,
             onPointerPanZoomStart: (_) => _cancelAutoSkipFromUserInteraction(),
             child: MouseRegion(
-              onHover: (_) => _showControlsFromPointerActivity(),
+              onHover: _showControlsFromPointerActivity,
               child: Stack(
                 children: [
                   // Keep-alive for Linux's idle GTK frame clock; inert on every

@@ -1,5 +1,6 @@
 import 'dart:ui' show PointerDeviceKind;
 
+import 'package:flutter/gestures.dart' show PointerHoverEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:plezy/widgets/video_controls/player_chrome_controller.dart';
@@ -243,6 +244,90 @@ void main() {
 
       await mouse.moveTo(const Offset(250, 250));
       await tester.pump();
+      expect(controller.controlsVisible, isFalse);
+    });
+
+    testWidgets('the synthetic hover that precedes a pointer removal leaves hidden chrome down', (tester) async {
+      final controller = PlayerChromeController();
+      addTearDown(controller.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 200,
+              height: 200,
+              // A handheld: the pointer leaving must not touch the chrome, so
+              // only the hover in front of the removal can raise it.
+              child: PlayerChromeInteractionRegion(
+                controller: controller,
+                hideOnExit: false,
+                child: const ColoredBox(color: Colors.black),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: const Offset(20, 20));
+      await tester.pump();
+      controller.hide();
+      expect(controller.controlsVisible, isFalse);
+
+      // iPadOS auto-hides an idle trackpad pointer; the engine reports that as a
+      // removal, and a removal whose location moved is dispatched as a
+      // synthesized hover followed by the remove.
+      await tester.sendEventToBinding(
+        const PointerHoverEvent(
+          kind: PointerDeviceKind.mouse,
+          position: Offset(21, 21),
+          synthesized: true,
+        ),
+      );
+      await tester.pump();
+
+      expect(controller.controlsVisible, isFalse);
+    });
+
+    testWidgets('sub-pixel trackpad jitter does not raise hidden chrome', (tester) async {
+      final controller = PlayerChromeController();
+      addTearDown(controller.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 200,
+              height: 200,
+              child: PlayerChromeInteractionRegion(
+                controller: controller,
+                hideOnExit: false,
+                child: const ColoredBox(color: Colors.black),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: const Offset(100, 100));
+      await mouse.moveTo(const Offset(20, 20));
+      await tester.pump();
+      controller.hide();
+
+      await mouse.moveTo(const Offset(20.4, 20.3));
+      await tester.pump();
+      expect(controller.controlsVisible, isFalse);
+
+      // A move the viewer meant still counts, and rearms auto-hide.
+      controller.configure(hideDelay: const Duration(milliseconds: 100));
+      await mouse.moveTo(const Offset(28, 28));
+      await tester.pump();
+      expect(controller.controlsVisible, isTrue);
+
+      await tester.pump(const Duration(milliseconds: 100));
       expect(controller.controlsVisible, isFalse);
     });
   });

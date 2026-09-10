@@ -658,10 +658,12 @@ class _VideoPlayerPromptInteractionHoldState extends State<_VideoPlayerPromptInt
     _syncHold();
   }
 
-  void _setHovered(bool hovered) {
+  /// [position] is where the pointer entered, so a pointer the platform merely
+  /// re-attached over a parked cursor does not read as viewer activity.
+  void _setHovered(bool hovered, {Offset? position}) {
     if (_hovered == hovered) return;
     _hovered = hovered;
-    if (hovered) widget.chromeController.recordPointerActivity();
+    if (hovered) widget.chromeController.recordPointerActivity(position: position);
     _syncHold();
   }
 
@@ -676,8 +678,11 @@ class _VideoPlayerPromptInteractionHoldState extends State<_VideoPlayerPromptInt
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
-      onEnter: (_) => _setHovered(true),
-      onHover: (_) => widget.chromeController.recordPointerActivity(),
+      onEnter: (event) => _setHovered(true, position: event.position),
+      onHover: (event) => widget.chromeController.recordPointerActivity(
+        position: event.position,
+        synthesized: event.synthesized,
+      ),
       onExit: (_) => _setHovered(false),
       child: widget.child,
     );

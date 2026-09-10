@@ -94,8 +94,15 @@ extension _PlexVideoControlsVisibilityMethods on _PlexVideoControlsState {
   }
 
   /// Show controls in response to pointer activity (mouse/trackpad movement).
-  void _showControlsFromPointerActivity() {
-    widget.chromeController.recordPointerActivity();
+  ///
+  /// [event] is the hover that carried the activity, when there is one; the
+  /// controller uses its position and synthesized flag to tell a real move from
+  /// pointer traffic the engine or the platform produced on its own.
+  void _showControlsFromPointerActivity([PointerHoverEvent? event]) {
+    widget.chromeController.recordPointerActivity(
+      position: event?.position,
+      synthesized: event?.synthesized ?? false,
+    );
   }
 
   void _toggleControls() {
