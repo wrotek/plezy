@@ -738,6 +738,13 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindin
   /// Reload-style flows call this from the open boundary: a failure before
   /// the commit leaves the previous session — and everything derived from
   /// it — untouched, so there is nothing to roll back.
+  ///
+  /// Publishing rebuilds: the track controls derive their source subtitle rows
+  /// from `session.context.result.subtitleSidecars`, and a Plex embedded text
+  /// sub is filtered out until its sidecar is in that set. Without a rebuild
+  /// here the controls keep rendering the pre-session (empty) list until some
+  /// unrelated setState happens to land, so a sheet opened during the open
+  /// snapshots an empty subtitle list.
   void _commitPlaybackSession(PlaybackSession session) {
     _playbackSession = session;
     _effectiveSelectedMediaIndex = session.mediaIndex;
@@ -752,6 +759,9 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindin
     if (!session.isOffline) {
       unawaited(LocalPlaybackHistory.recordPlayback(session.metadata));
     }
+    // Assignments above stay unconditional (callers depend on the commit even
+    // off-screen); only the rebuild is mount-gated.
+    setStateIfMounted(() {});
   }
 
   PlaybackSession _updatePlaybackSessionSubtitleSelection(
