@@ -65,6 +65,11 @@ class DesktopVideoControls extends StatefulWidget {
   final VoidCallback? onHideControls;
 
   final TrackControlsState trackControlsState;
+
+  /// Re-reads the live state when a sheet is rebuilt; see
+  /// [TrackChapterControls.resolveTrackControlsState].
+  final TrackControlsState Function()? resolveTrackControlsState;
+
   final VoidCallback? onBack;
 
   /// Notifier for whether first video frame has rendered (shows loading state when false).
@@ -140,6 +145,7 @@ class DesktopVideoControls extends StatefulWidget {
     this.onRequestPlayPauseFocus,
     this.onHideControls,
     this.trackControlsState = const TrackControlsState(),
+    this.resolveTrackControlsState,
     this.onBack,
     this.hasFirstFrame,
     this.thumbnailDataBuilder,
@@ -945,6 +951,7 @@ class DesktopVideoControlsState extends State<DesktopVideoControls> {
                   chapters: widget.chapters,
                   chaptersLoaded: widget.chaptersLoaded,
                   trackControlsState: _trackControlsState,
+                  resolveTrackControlsState: widget.resolveTrackControlsState,
                   onSeekRequested: widget.onSeekRequested,
                   onSeekCompleted: widget.onSeekCompleted,
                   focusNodes: _trackControlFocusNodes,

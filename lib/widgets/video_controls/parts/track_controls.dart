@@ -307,6 +307,12 @@ extension _PlexVideoControlsTrackMethods on _PlexVideoControlsState {
       chapters: _chapters,
       chaptersLoaded: _chaptersLoaded,
       trackControlsState: trackControlsState,
+      // Read, not watch: this runs while a sheet is rebuilding, and the
+      // subscription belongs to the build above.
+      resolveTrackControlsState: () => _buildTrackControlsState(
+        playbackState: context.read<PlaybackStateProvider>(),
+        onToggleAlwaysOnTop: _toggleAlwaysOnTop,
+      ),
       onSeekRequested: widget.onSeekRequested,
       onSeekCompleted: widget.onSeekCompleted,
       hideChaptersAndQueue: hideChaptersAndQueue,

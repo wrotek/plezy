@@ -24,6 +24,17 @@ class TrackChapterControls extends StatelessWidget {
   final List<MediaChapter> chapters;
   final bool chaptersLoaded;
   final TrackControlsState trackControlsState;
+
+  /// Re-reads the live [TrackControlsState] when a sheet is built.
+  ///
+  /// A sheet builder is stored by [OverlaySheetHost] and re-invoked on every
+  /// host rebuild, but [trackControlsState] belongs to the build that opened
+  /// it. Source subtitle rows only exist once the playback session commits, so
+  /// a sheet opened during the open would otherwise snapshot an empty list and
+  /// never recover. Resolving through the owning State — which is stable across
+  /// rebuilds — lets the sheet pick the session up as it lands.
+  final TrackControlsState Function()? resolveTrackControlsState;
+
   final Future<void> Function(Duration position)? onSeekRequested;
   final Function(Duration position)? onSeekCompleted;
 
@@ -51,6 +62,7 @@ class TrackChapterControls extends StatelessWidget {
     required this.chapters,
     required this.chaptersLoaded,
     required this.trackControlsState,
+    this.resolveTrackControlsState,
     this.onSeekRequested,
     this.onSeekCompleted,
     this.focusNodes,
@@ -173,7 +185,8 @@ class TrackChapterControls extends StatelessWidget {
                   state.onCancelAutoHide?.call();
                   OverlaySheetController.of(context)
                       .show(
-                        builder: (_) => VideoSettingsSheet(player: player, trackControlsState: state),
+                        builder: (_) =>
+                            VideoSettingsSheet(player: player, trackControlsState: _liveTrackControlsState()),
                       )
                       .whenComplete(() => state.onStartAutoHide?.call());
                 },
@@ -209,7 +222,7 @@ class TrackChapterControls extends StatelessWidget {
                     state.onCancelAutoHide?.call();
                     OverlaySheetController.of(context)
                         .show(
-                          builder: (_) => TrackSheet(player: player, trackControlsState: state),
+                          builder: (_) => TrackSheet(player: player, trackControlsState: _liveTrackControlsState()),
                         )
                         .whenComplete(() => state.onStartAutoHide?.call());
                   },
@@ -377,6 +390,10 @@ class TrackChapterControls extends StatelessWidget {
       },
     );
   }
+
+  /// Latest state for a sheet being (re)built, falling back to this build's
+  /// snapshot when no resolver was supplied.
+  TrackControlsState _liveTrackControlsState() => resolveTrackControlsState?.call() ?? trackControlsState;
 
   String? _versionQualitySemanticValue() {
     final state = trackControlsState;

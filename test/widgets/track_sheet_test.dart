@@ -12,6 +12,7 @@ import 'package:plezy/services/playback_initialization_types.dart';
 import 'package:plezy/widgets/overlay_sheet.dart';
 import 'package:plezy/widgets/video_controls/models/track_controls_state.dart';
 import 'package:plezy/widgets/video_controls/sheets/track_sheet.dart';
+import 'package:plezy/widgets/video_controls/widgets/track_chapter_controls.dart';
 
 import '../test_helpers/theme.dart';
 
@@ -525,6 +526,80 @@ void main() {
 
       expect(state.hasSubtitleControls(const Tracks(subtitle: [SubtitleTrack.auto, SubtitleTrack.off])), isFalse);
       expect(state.hasSubtitleControls(const Tracks(subtitle: [SubtitleTrack(id: 's1')])), isTrue);
+    });
+  });
+
+  group('sheet opened before the playback session commits', () {
+    // The controls are live and tappable for the whole resolve+open, but source
+    // subtitle rows only exist once the session has committed. A sheet builder
+    // is stored by the host and re-invoked on rebuild, so it has to resolve the
+    // state again rather than close over the build that opened it — otherwise a
+    // viewer who opens an episode and immediately reaches for subtitles gets an
+    // empty list that never recovers.
+    testWidgets('picks up source subtitles that commit after the sheet was opened', (tester) async {
+      final player = _FakeTrackSheetPlayer(
+        tracks: const Tracks(),
+        track: const TrackSelection(subtitle: SubtitleTrack.off),
+      );
+
+      // A Plex embedded text sub: `key` set, `external` false. Listed only
+      // while transcoding, and only once the session is committed.
+      final embedded = MediaSubtitleTrack(
+        id: 7,
+        codec: 'srt',
+        key: '/library/streams/7',
+        title: 'Polski KONTRAST',
+        selected: false,
+        forced: false,
+      );
+      final committed = TrackControlsState(
+        isTranscoding: true,
+        sourceSubtitleTracks: [embedded],
+        onSwitchSubtitle: (_) async {},
+      );
+
+      var live = const TrackControlsState();
+      late StateSetter commitSession;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(extensions: const [testMonoTokens]),
+          // The commit lives above the host, as it does in the real tree: the
+          // video player screen owns the session and the host is its
+          // descendant, so committing rebuilds the host and re-invokes the
+          // stored sheet builder.
+          home: StatefulBuilder(
+            builder: (context, setState) {
+              commitSession = setState;
+              return OverlaySheetHost(
+                child: Scaffold(
+                  body: SizedBox(
+                    width: 700,
+                    height: 400,
+                    child: TrackChapterControls(
+                      player: player,
+                      chapters: const [],
+                      chaptersLoaded: true,
+                      trackControlsState: live,
+                      resolveTrackControlsState: () => live,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.bySemanticsLabel(t.videoControls.tracksButton));
+      await tester.pumpAndSettle();
+      expect(find.text('Polski KONTRAST'), findsNothing, reason: 'session has not committed yet');
+
+      commitSession(() => live = committed);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Polski KONTRAST'), findsOneWidget);
     });
   });
 }
