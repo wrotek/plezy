@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
@@ -244,6 +245,12 @@ class _MobileVideoControlsState extends State<MobileVideoControls> with SingleTi
         _buildTopBar(context),
         Expanded(
           child: GestureDetector(
+            // Swipe-up-for-content-strip is a finger affordance (its own start
+            // handler consults the touch-only edge-adjustment zones). Scoping it
+            // to touch keeps it out of the arena for a trackpad click-drag,
+            // which would otherwise lose to this detector purely because it sits
+            // deeper in the tree — see the player's drag-to-dismiss.
+            supportedDevices: const {PointerDeviceKind.touch},
             onVerticalDragStart: _onVerticalDragStart,
             onVerticalDragUpdate: _onVerticalDragUpdate,
             onVerticalDragEnd: _onVerticalDragEnd,

@@ -1,7 +1,9 @@
 import 'dart:async';
 import '../media/ids.dart';
 import 'dart:io';
+import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:plezy/widgets/app_icon.dart';
 import 'package:material_symbols_icons/symbols.dart';
@@ -419,7 +421,8 @@ class VideoPlayerScreen extends StatefulWidget {
   State<VideoPlayerScreen> createState() => VideoPlayerScreenState();
 }
 
-class VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindingObserver, MountedSetStateMixin {
+class VideoPlayerScreenState extends State<VideoPlayerScreen>
+    with WidgetsBindingObserver, MountedSetStateMixin, SingleTickerProviderStateMixin {
   /// How close to the capture buffer's end counts as "live". A live-edge
   /// transcode starts behind the buffer's edge by tuner ingest and encoder
   /// start-up latency (10–20 s observed), so a tighter threshold would flag
@@ -678,6 +681,13 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindin
   int _pinchZoomActivationUpdateCount = 0;
   bool _isPinchZooming = false;
   bool _pinchZoomChanged = false;
+
+  /// Trackpad/mouse drag-to-dismiss offset, in logical pixels down from rest.
+  /// A notifier rather than setState so a drag repaints a Transform instead of
+  /// rebuilding the player tree (and the video surface) every frame.
+  final ValueNotifier<double> _pointerDismissDrag = ValueNotifier<double>(0);
+  late final AnimationController _pointerDismissSettle;
+  double _pointerDismissSettleFrom = 0;
   WatchTogetherProvider? _watchTogetherProvider;
   Object? _watchTogetherBinding;
   WatchPlaybackLease? _watchTogetherLease;
@@ -882,6 +892,9 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindin
       }
     }
     unawaited(AndroidExitDiagnostics.markUiState(AndroidUiState.player));
+
+    _pointerDismissSettle = AnimationController(vsync: this, duration: const Duration(milliseconds: 200))
+      ..addListener(_onPointerDismissSettleTick);
 
     // Fullscreen entered from here on is the player's to drop; whatever was
     // already fullscreen belongs to the app window (#1624).
@@ -1833,6 +1846,8 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindin
     unawaited(AndroidExitDiagnostics.markUiState(AndroidUiState.mainScreen));
     _playerInitializationGeneration++;
     _frameRate.dispose();
+    _pointerDismissSettle.dispose();
+    _pointerDismissDrag.dispose();
     WidgetsBinding.instance.removeObserver(this);
     CarUxRestrictionsService.instance.listenable.removeListener(_handleCarRestrictionsChanged);
 
@@ -2377,7 +2392,7 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindin
         child: Builder(
           key: _overlayChildKey,
           builder: (sheetContext) => _isPlayerInitialized && player != null
-              ? _buildVideoPlayer(sheetContext)
+              ? _wrapWithPointerDismiss(sheetContext, child: _buildVideoPlayer(sheetContext))
               : (_playerInitializationError != null
                     ? _buildInitializationError(_playerInitializationError!)
                     : _buildLoadingSpinner()),

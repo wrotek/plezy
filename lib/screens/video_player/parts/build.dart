@@ -160,6 +160,67 @@ extension _VideoPlayerBuildMethods on VideoPlayerScreenState {
     _pinchStartZoomScale = null;
   }
 
+  // Trackpad/mouse drag-to-dismiss.
+  //
+  // On an iPad with a Magic Keyboard no *touch* gesture is free to mean "close
+  // the player": vertical drags near the edges are brightness and volume, the
+  // centre belongs to the content strip, and two-finger trackpad scrolling is
+  // already volume (_handlePointerSignal in video_controls/parts/visibility).
+  // A click-drag, though, is entirely unclaimed — every touch handler in
+  // playback_input is gated on PointerDeviceKind.touch and drops mouse events.
+  //
+  // So: press and drag down with the pointer to close. Restricted to
+  // PointerDeviceKind.mouse, which is what a trackpad click reports as, and to
+  // mobile OSes — desktop keeps mouse drags for scrubbing and window dragging.
+  // The content follows the cursor; releasing past the threshold pops (the
+  // route's reverse transition continues the motion), otherwise it settles back.
+
+  void _onPointerDismissSettleTick() {
+    _pointerDismissDrag.value =
+        _pointerDismissSettleFrom * (1 - Curves.easeOutCubic.transform(_pointerDismissSettle.value));
+  }
+
+  void _onPointerDismissStart(DragStartDetails details) => _pointerDismissSettle.stop();
+
+  void _onPointerDismissUpdate(DragUpdateDetails details) {
+    _pointerDismissDrag.value = math.max(0, _pointerDismissDrag.value + details.delta.dy);
+  }
+
+  void _onPointerDismissEnd(DragEndDetails details) {
+    final offset = _pointerDismissDrag.value;
+    if (offset <= 0) return;
+    // Same thresholds as the overlay sheet system's drag-to-dismiss.
+    if (offset > MediaQuery.sizeOf(context).height * 0.25 || (details.primaryVelocity ?? 0) > 500) {
+      unawaited(_handleBackButton());
+    } else {
+      _onPointerDismissCancel();
+    }
+  }
+
+  void _onPointerDismissCancel() {
+    if (_pointerDismissDrag.value <= 0) return;
+    _pointerDismissSettleFrom = _pointerDismissDrag.value;
+    _pointerDismissSettle.forward(from: 0);
+  }
+
+  Widget _wrapWithPointerDismiss(BuildContext context, {required Widget child}) {
+    if (!PlatformDetector.isMobile(context)) return child;
+    return GestureDetector(
+      supportedDevices: const {PointerDeviceKind.mouse},
+      behavior: HitTestBehavior.translucent,
+      onVerticalDragStart: _onPointerDismissStart,
+      onVerticalDragUpdate: _onPointerDismissUpdate,
+      onVerticalDragEnd: _onPointerDismissEnd,
+      onVerticalDragCancel: _onPointerDismissCancel,
+      child: ValueListenableBuilder<double>(
+        valueListenable: _pointerDismissDrag,
+        child: child,
+        builder: (context, offset, child) =>
+            offset == 0 ? child! : Transform.translate(offset: Offset(0, offset), child: child),
+      ),
+    );
+  }
+
   Widget _buildVideoPlayer(BuildContext context) {
     // Cache platform detection to avoid multiple calls
     final isMobile = PlatformDetector.isMobile(context);
@@ -172,6 +233,11 @@ extension _VideoPlayerBuildMethods on VideoPlayerScreenState {
       backgroundColor: Colors.transparent,
       body: GestureDetector(
         behavior: HitTestBehavior.translucent, // Allow taps to pass through to controls
+        // Pinch-zoom is a finger/trackpad gesture. Excluding mouse keeps the
+        // ScaleGestureRecognizer (which also claims single-pointer drags) out of
+        // the arena for a trackpad *click*-drag, so drag-to-dismiss below wins it
+        // deterministically instead of racing the scale recognizer.
+        supportedDevices: const {PointerDeviceKind.touch, PointerDeviceKind.trackpad},
         onScaleStart: (details) {
           if (!isMobile) return;
           if (details.pointerCount >= 2) _startMobileZoomGesture();
