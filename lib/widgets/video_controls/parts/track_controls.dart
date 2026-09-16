@@ -280,6 +280,30 @@ extension _PlexVideoControlsTrackMethods on _PlexVideoControlsState {
     );
   }
 
+  /// Opens the same Playback Settings sheet as the tune button in the top bar.
+  ///
+  /// Bound to a secondary (right) click anywhere over the player so a pointer
+  /// user reaches it without first surfacing the chrome and aiming at a
+  /// 40pt icon. Mirrors the button's auto-hide bracketing exactly.
+  void _openPlaybackSettings() {
+    widget.chromeController.cancelAutoHide();
+    unawaited(
+      OverlaySheetController.of(context)
+          .show(
+            builder: (_) => VideoSettingsSheet(
+              player: widget.player,
+              // read, not watch: this runs from a gesture callback, so there is
+              // no build to own the subscription.
+              trackControlsState: _buildTrackControlsState(
+                playbackState: context.read<PlaybackStateProvider>(),
+                onToggleAlwaysOnTop: _toggleAlwaysOnTop,
+              ),
+            ),
+          )
+          .whenComplete(_startHideTimer),
+    );
+  }
+
   /// True when the active server supports external subtitle search (Plex
   /// today). Requires a server id because the download callback needs the
   /// Plex client/token for that server.

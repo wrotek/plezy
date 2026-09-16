@@ -88,6 +88,7 @@ import 'widgets/mobile_edge_adjustment_indicator.dart';
 import 'widgets/mobile_skip_zones.dart';
 import 'widgets/skip_marker_button.dart';
 import 'widgets/track_chapter_controls.dart';
+import 'sheets/video_settings_sheet.dart';
 import 'widgets/performance_overlay/performance_overlay.dart';
 import '../rasterized_gradient.dart';
 import 'mobile_video_controls.dart';
@@ -1513,6 +1514,27 @@ class _PlexVideoControlsState extends State<PlexVideoControls>
                         ),
                       ),
                     ),
+                  // Right-click anywhere over the player opens Playback
+                  // Settings — the same sheet as the tune button up top.
+                  //
+                  // It has to sit above every other layer because which one
+                  // receives a pointer depends on state: the full-frame tap
+                  // detector while the chrome is hidden, MobileSkipZones over
+                  // the left/right thirds, the controls overlay once shown.
+                  // Being translucent it reports *no* hit, so the Stack keeps
+                  // testing downwards and all of those still get the event —
+                  // this only adds itself to the path. And a secondary tap is
+                  // never offered to the primary recognizers below, so nothing
+                  // here has an arena to win. Placed under the lock overlay,
+                  // which is opaque and therefore gates it for free.
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      excludeFromSemantics: true,
+                      onSecondaryTap: _openPlaybackSettings,
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
                   if (_isScreenLocked)
                     Positioned.fill(
                       child: GestureDetector(
