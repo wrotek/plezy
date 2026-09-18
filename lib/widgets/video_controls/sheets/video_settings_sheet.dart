@@ -22,7 +22,10 @@ import '../../../services/settings_service.dart';
 import '../../../services/sleep_timer_service.dart';
 import '../../../services/video_filter_manager.dart';
 import '../../../focus/focusable_wrapper.dart';
+import '../../../media/ids.dart';
+import '../../../providers/multi_server_provider.dart';
 import '../../../utils/dialogs.dart';
+import '../../../utils/track_label_builder.dart';
 import '../../../utils/app_logger.dart';
 import '../../../utils/formatters.dart';
 import '../../../utils/platform_detector.dart';
@@ -37,7 +40,10 @@ import '../models/track_controls_state.dart';
 import '../widgets/sync_offset_control.dart';
 import '../widgets/sleep_timer_content.dart';
 import '../../../i18n/strings.g.dart';
+import '../../file_info_bottom_sheet.dart';
+import '../helpers/track_filter_helper.dart';
 import 'base_video_control_sheet.dart';
+import 'track_sheet.dart';
 import 'version_quality_sheet.dart';
 
 enum _SettingsView { menu, speed, zoom, versionQuality, sleep, audioDevice, shader, dvConversion, hdrToneMapping }
@@ -50,6 +56,10 @@ class _SettingsMenuItem extends StatelessWidget {
   final bool isHighlighted;
   final bool allowValueOverflow;
 
+  /// Swaps the chevron for a spinner and drops the tap, for a row whose
+  /// destination has to be fetched before it can be shown (File Info).
+  final bool isBusy;
+
   const _SettingsMenuItem({
     required this.icon,
     required this.title,
@@ -57,6 +67,7 @@ class _SettingsMenuItem extends StatelessWidget {
     required this.onTap,
     this.isHighlighted = false,
     this.allowValueOverflow = false,
+    this.isBusy = false,
   });
 
   @override
@@ -76,10 +87,24 @@ class _SettingsMenuItem extends StatelessWidget {
         children: [
           if (allowValueOverflow) Flexible(child: valueWidget) else valueWidget,
           const SizedBox(width: 8),
-          AppIcon(Symbols.chevron_right_rounded, fill: 1, color: t.textMuted),
+          if (isBusy)
+            // Sized to the chevron it replaces so the row does not reflow.
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: Center(
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: t.textMuted),
+                ),
+              ),
+            )
+          else
+            AppIcon(Symbols.chevron_right_rounded, fill: 1, color: t.textMuted),
         ],
       ),
-      onTap: onTap,
+      onTap: isBusy ? null : onTap,
     );
   }
 }
@@ -335,6 +360,8 @@ class _VideoSettingsSheetState extends State<VideoSettingsSheet> {
   late double _zoomScale;
   String _dvConversionMode = 'auto';
   int _dvConversionWriteGeneration = 0;
+  // File Info is fetched on demand, so the row carries its own in-flight state.
+  bool _loadingFileInfo = false;
   // Linux only, and answered by the native side. Starts false so the toggle
   // never flashes into view on an output that cannot carry HDR.
   bool _linuxHdrSupported = false;
@@ -551,6 +578,85 @@ class _VideoSettingsSheetState extends State<VideoSettingsSheet> {
     Future.microtask(() => _state.onCancelAutoHide?.call());
   }
 
+  /// Pushes the track sheet in subtitles-only mode.
+  ///
+  /// A pushed page rather than a [_SettingsView] because the subtitle column
+  /// is not a list of settings: it carries its own selection semantics
+  /// (primary vs secondary via long-press, the Search Subtitles footer) and
+  /// the sheet host already stacks pages with back navigation.
+  void _openSubtitles() {
+    unawaited(
+      OverlaySheetController.of(context).push(
+        builder: (_) => TrackSheet(player: widget.player, trackControlsState: _state, subtitlesOnly: true),
+      ),
+    );
+  }
+
+  /// Fetches the item's technical breakdown and pushes the shared File Info
+  /// sheet — the same one the library context menu opens.
+  ///
+  /// The tree is not carried by the playback session (that one is the slim
+  /// persisted `MediaVersion`, not `MediaFileInfo`), so it costs a round-trip;
+  /// the row spins rather than the sheet, because the settings list stays
+  /// usable while it runs.
+  Future<void> _openFileInfo() async {
+    if (_loadingFileInfo) return;
+    final item = _state.metadata;
+    final serverId = _state.serverId;
+    if (item == null || serverId == null || serverId.isEmpty) return;
+
+    setState(() => _loadingFileInfo = true);
+    try {
+      final client = context.read<MultiServerProvider>().serverManager.getClient(ServerId(serverId));
+      final fileInfo = await client?.getFileInfo(item);
+      if (!mounted) return;
+      if (fileInfo == null) {
+        showErrorSnackBar(context, t.messages.fileInfoNotAvailable);
+        return;
+      }
+      unawaited(
+        OverlaySheetController.of(context).push(
+          builder: (_) => FileInfoBottomSheet(fileInfo: fileInfo, title: item.displayTitle),
+        ),
+      );
+    } catch (error, stackTrace) {
+      appLogger.w('Failed to load file info for playback', error: error, stackTrace: stackTrace);
+      if (mounted) showErrorSnackBar(context, t.messages.errorLoadingFileInfo(error: error.toString()));
+    } finally {
+      if (mounted) setState(() => _loadingFileInfo = false);
+    }
+  }
+
+  /// Label for the active subtitle, resolved the same way the track sheet
+  /// decides which tile shows a checkmark: the server-negotiated choice when
+  /// the server owns the switch, the player's own selection otherwise.
+  String _subtitleValueText(Tracks? tracks, TrackSelection selection) {
+    if (_state.canUseSourceSubtitles) {
+      final sourceTracks = _state.sourceSubtitleTracks;
+      final choice = _state.selectedSubtitleChoice;
+      if (choice != null) {
+        if (choice.isOff) return t.common.off;
+        final index = sourceTracks.indexWhere((track) => track.id == choice.sourceStreamId);
+        if (index >= 0) return sourceTracks[index].labelForIndex(index).primary;
+      }
+      // No explicit choice yet — the server marks its own default.
+      final index = sourceTracks.indexWhere((track) => track.selected);
+      return index >= 0 ? sourceTracks[index].labelForIndex(index).primary : t.common.off;
+    }
+
+    final subtitle = selection.subtitle;
+    if (subtitle == null || subtitle.id == 'no') return t.common.off;
+    final playerTracks = TrackFilterHelper.extractAndFilterTracks<SubtitleTrack>(tracks, (t) => t?.subtitle ?? []);
+    final index = playerTracks.indexWhere((track) => track.id == subtitle.id);
+    return TrackLabelBuilder.subtitleLabel(
+      title: subtitle.title,
+      language: subtitle.language,
+      codec: subtitle.codec,
+      forced: subtitle.isForced,
+      index: index >= 0 ? index : 0,
+    ).primary;
+  }
+
   void _navigateBack() {
     setState(() {
       _currentView = _SettingsView.menu;
@@ -693,6 +799,15 @@ class _VideoSettingsSheetState extends State<VideoSettingsSheet> {
     return ListView(
       shrinkWrap: true,
       children: [
+        if (_state.canShowFileInfo)
+          _SettingsMenuItem(
+            icon: Symbols.movie_info_rounded,
+            title: t.fileInfo.title,
+            valueText: '',
+            isBusy: _loadingFileInfo,
+            onTap: () => unawaited(_openFileInfo()),
+          ),
+
         // Playback Speed - hidden for live TV and when user cannot control playback
         if (_state.canControl && !_state.isLive)
           StreamBuilder<double>(
@@ -748,6 +863,32 @@ class _VideoSettingsSheetState extends State<VideoSettingsSheet> {
           valueText: formatSyncOffset(_audioSyncOffset.toDouble()),
           isHighlighted: _audioSyncOffset != 0,
           onTap: () => _openSyncBar(isSubtitle: false),
+        ),
+
+        // Subtitle track selection, above the offset control that tunes it.
+        // Gated on the same predicate as the toolbar's CC button, so the row
+        // is absent exactly when that button is.
+        StreamBuilder<Tracks>(
+          stream: widget.player.streams.tracks,
+          initialData: widget.player.state.tracks,
+          builder: (context, tracksSnapshot) {
+            final tracks = tracksSnapshot.data;
+            if (!_state.hasSubtitleControls(tracks)) return const SizedBox.shrink();
+            return StreamBuilder<TrackSelection>(
+              stream: widget.player.streams.track,
+              initialData: widget.player.state.track,
+              builder: (context, selectionSnapshot) {
+                final selection = selectionSnapshot.data ?? widget.player.state.track;
+                return _SettingsMenuItem(
+                  icon: Symbols.closed_caption_rounded,
+                  title: t.videoControls.subtitlesLabel,
+                  valueText: _subtitleValueText(tracks, selection),
+                  allowValueOverflow: true,
+                  onTap: _openSubtitles,
+                );
+              },
+            );
+          },
         ),
 
         _SettingsMenuItem(

@@ -5,7 +5,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:plezy/i18n/strings.g.dart';
+import 'package:plezy/media/ids.dart';
+import 'package:plezy/media/media_file_info.dart';
+import 'package:plezy/media/media_item.dart';
+import 'package:plezy/media/media_kind.dart';
+import 'package:plezy/media/media_server_client.dart';
 import 'package:plezy/mpv/models.dart';
+import 'package:plezy/providers/multi_server_provider.dart';
 import 'package:plezy/mpv/player/player.dart';
 import 'package:plezy/mpv/player/player_native.dart';
 import 'package:plezy/mpv/player/player_state.dart';
@@ -14,13 +20,19 @@ import 'package:plezy/screens/settings/subtitle_styling_screen.dart';
 import 'package:plezy/services/base_shared_preferences_service.dart';
 import 'package:plezy/services/settings_service.dart';
 import 'package:plezy/services/sleep_timer_service.dart';
+import 'package:plezy/widgets/file_info_bottom_sheet.dart';
 import 'package:plezy/widgets/overlay_sheet.dart';
 import 'package:plezy/widgets/video_controls/models/track_controls_state.dart';
+import 'package:plezy/widgets/video_controls/sheets/track_sheet.dart';
 import 'package:plezy/widgets/video_controls/sheets/video_settings_sheet.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 import 'package:shared_preferences_platform_interface/types.dart';
 
+import 'package:provider/provider.dart';
+
+import '../test_helpers/media_items.dart';
+import '../test_helpers/multi_server_fixtures.dart';
 import '../test_helpers/prefs.dart';
 import '../test_helpers/theme.dart';
 
@@ -418,7 +430,187 @@ void main() {
       expect(_tickOn('Player'), findsNothing);
     });
   });
+
+  group('Subtitles row', () {
+    testWidgets('is absent when the item has no subtitle controls', (tester) async {
+      // Same predicate as the toolbar's CC button: no tracks, no server-side
+      // switching, no search — so there is nothing for the row to open.
+      await _pumpSheet(tester);
+
+      expect(find.text('Subtitles'), findsNothing);
+      // Positive control: the sync row is adjacent and unconditional, so its
+      // absence would mean the assertion above passed for the wrong reason.
+      expect(find.text('Subtitle Sync'), findsOneWidget);
+    });
+
+    testWidgets('names the selected track and sits above Subtitle Sync', (tester) async {
+      const english = SubtitleTrack(id: '1', title: 'English', language: 'eng');
+      await _pumpSheet(
+        tester,
+        player: _FakeSettingsPlayer(
+          playerState: const PlayerState(
+            tracks: Tracks(subtitle: [SubtitleTrack.off, english]),
+            track: TrackSelection(subtitle: english),
+          ),
+        ),
+      );
+
+      expect(find.text('Subtitles'), findsOneWidget);
+      expect(_valueOn('Subtitles', 'English'), findsOneWidget);
+
+      // Ordering is the point of the row's placement: it introduces the track
+      // whose offset the next row tunes.
+      final subtitles = tester.getTopLeft(find.text('Subtitles')).dy;
+      final sync = tester.getTopLeft(find.text('Subtitle Sync')).dy;
+      expect(subtitles, lessThan(sync));
+    });
+
+    testWidgets('reads Off when the player has tracks but none selected', (tester) async {
+      await _pumpSheet(
+        tester,
+        player: _FakeSettingsPlayer(
+          playerState: const PlayerState(
+            tracks: Tracks(
+              subtitle: [
+                SubtitleTrack.off,
+                SubtitleTrack(id: '1', title: 'English'),
+              ],
+            ),
+            track: TrackSelection(subtitle: SubtitleTrack.off),
+          ),
+        ),
+      );
+
+      expect(_valueOn('Subtitles', 'Off'), findsOneWidget);
+      expect(_valueOn('Subtitles', 'English'), findsNothing);
+    });
+
+    testWidgets('pushes the track sheet in subtitles-only mode', (tester) async {
+      // Shown through the host rather than mounted under it: push() stacks a
+      // page onto an open sheet, so there has to be one. What that sheet then
+      // renders is track_sheet_test's subject; this is the wiring.
+      await _pumpSheetViaOverlayRoute(
+        tester,
+        _FakeSettingsPlayer(
+          playerState: const PlayerState(
+            tracks: Tracks(
+              subtitle: [
+                SubtitleTrack.off,
+                SubtitleTrack(id: '1', title: 'English'),
+              ],
+            ),
+            track: TrackSelection(subtitle: SubtitleTrack.off),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Subtitles'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TrackSheet), findsOneWidget);
+      expect(tester.widget<TrackSheet>(find.byType(TrackSheet)).subtitlesOnly, isTrue);
+    });
+  });
+
+  group('File Info row', () {
+    // A movie on a reachable server: the only shape that can answer getFileInfo.
+    final playable = testMediaItem(kind: MediaKind.movie, title: 'Blade Runner');
+
+    testWidgets('is offered for a file-backed item on a server', (tester) async {
+      await _pumpSheet(
+        tester,
+        state: TrackControlsState(metadata: playable, serverId: 'server-1'),
+      );
+
+      expect(find.text('File Info'), findsOneWidget);
+    });
+
+    testWidgets('is absent without a server to ask', (tester) async {
+      await _pumpSheet(tester, state: TrackControlsState(metadata: playable));
+
+      expect(find.text('File Info'), findsNothing);
+    });
+
+    testWidgets('is absent for downloaded playback', (tester) async {
+      // The tree is fetched on demand, so an offline session could only ever
+      // fail the request — the row is hidden rather than left to error.
+      await _pumpSheet(
+        tester,
+        state: TrackControlsState(metadata: playable, serverId: 'server-1', isOfflinePlayback: true),
+      );
+
+      expect(find.text('File Info'), findsNothing);
+    });
+
+    testWidgets('tapping it fetches the tree and pushes the shared sheet', (tester) async {
+      final client = _FakeFileInfoClient(
+        const MediaFileInfo(
+          versions: [
+            MediaFileVersion(
+              container: 'mkv',
+              parts: [MediaFilePart(filePath: '/media/movies/Blade Runner.mkv')],
+            ),
+          ],
+        ),
+      );
+      final servers = testMultiServer(clients: [client]);
+
+      await _pumpSheetViaOverlayRoute(
+        tester,
+        _FakeSettingsPlayer(),
+        state: TrackControlsState(metadata: playable, serverId: client.serverId.value),
+        servers: servers.provider,
+      );
+
+      await tester.tap(find.text('File Info'));
+      await tester.pumpAndSettle();
+
+      expect(client.requested, [playable.id]);
+      expect(find.byType(FileInfoBottomSheet), findsOneWidget);
+      // Pushed into the player's own sheet host, which is the part that is not
+      // shared with the library context menu's presentation.
+      expect(find.text('/media/movies/Blade Runner.mkv'), findsOneWidget);
+    });
+
+    testWidgets('says so when the server has nothing to report', (tester) async {
+      final client = _FakeFileInfoClient(null);
+      final servers = testMultiServer(clients: [client]);
+
+      await _pumpSheetViaOverlayRoute(
+        tester,
+        _FakeSettingsPlayer(),
+        state: TrackControlsState(metadata: playable, serverId: client.serverId.value),
+        servers: servers.provider,
+      );
+
+      await tester.tap(find.text('File Info'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(FileInfoBottomSheet), findsNothing);
+      expect(find.text('File information not available'), findsOneWidget);
+    });
+
+    testWidgets('is absent for a kind that owns no files', (tester) async {
+      // Container kinds aggregate leaves and carry no MediaSources of their own.
+      await _pumpSheet(
+        tester,
+        state: TrackControlsState(
+          metadata: testMediaItem(kind: MediaKind.season, title: 'Season 1'),
+          serverId: 'srv',
+        ),
+      );
+
+      expect(find.text('File Info'), findsNothing);
+    });
+  });
 }
+
+/// The value text on the right of one of the sheet's menu rows. Scoped to the
+/// row because values like "Off" are shared with other rows.
+Finder _valueOn(String rowLabel, String value) => find.descendant(
+  of: find.ancestor(of: find.text(rowLabel), matching: find.byType(ListTile)).first,
+  matching: find.text(value),
+);
 
 /// The tick marking the selected option in one of the sheet's picker views.
 Finder _tickOn(String label) => find.descendant(
@@ -429,6 +621,7 @@ Finder _tickOn(String label) => find.descendant(
 Future<void> _pumpSheet(
   WidgetTester tester, {
   bool canControl = false,
+  TrackControlsState? state,
   Player? player,
   // Explicitly false by default so the sheet does not consult the platform.
   // Pass null to exercise the capability probe instead.
@@ -447,7 +640,7 @@ Future<void> _pumpSheet(
     child: VideoSettingsSheet(
       player: player ?? _FakeSettingsPlayer(),
       supportsHdrControl: supportsHdrControl,
-      trackControlsState: TrackControlsState(canControl: canControl),
+      trackControlsState: state ?? TrackControlsState(canControl: canControl),
     ),
   );
   await tester.pumpWidget(
@@ -459,35 +652,50 @@ Future<void> _pumpSheet(
   await tester.pumpAndSettle();
 }
 
-Future<void> _pumpSheetViaOverlayRoute(WidgetTester tester, Player player) async {
-  await tester.pumpWidget(
-    MaterialApp(
-      theme: ThemeData(extensions: const [testMonoTokensAnimated]),
-      home: OverlaySheetHost(
-        child: Scaffold(
-          body: Builder(
-            builder: (context) => TextButton(
-              onPressed: () => unawaited(
-                OverlaySheetController.of(context).show<void>(
-                  builder: (_) => VideoSettingsSheet(
-                    player: player,
-                    trackControlsState: const TrackControlsState(canControl: true),
-                  ),
+Future<void> _pumpSheetViaOverlayRoute(
+  WidgetTester tester,
+  Player player, {
+  TrackControlsState? state,
+  MultiServerProvider? servers,
+}) async {
+  final app = MaterialApp(
+    theme: ThemeData(extensions: const [testMonoTokensAnimated]),
+    home: OverlaySheetHost(
+      child: Scaffold(
+        body: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => unawaited(
+              OverlaySheetController.of(context).show<void>(
+                builder: (_) => VideoSettingsSheet(
+                  player: player,
+                  trackControlsState: state ?? const TrackControlsState(canControl: true),
                 ),
               ),
-              child: const Text('Open settings'),
             ),
+            child: const Text('Open settings'),
           ),
         ),
       ),
     ),
+  );
+  await tester.pumpWidget(
+    servers == null ? app : ChangeNotifierProvider<MultiServerProvider>.value(value: servers, child: app),
   );
   await tester.tap(find.text('Open settings'));
   await tester.pumpAndSettle();
 }
 
 class _FakeSettingsPlayer implements Player {
-  _FakeSettingsPlayer({this.onSetProperty, this.onSetRate, this.hdrOutputSupported = false});
+  _FakeSettingsPlayer({
+    this.onSetProperty,
+    this.onSetRate,
+    this.hdrOutputSupported = false,
+    this.playerState = const PlayerState(),
+  });
+
+  /// Seeds `state.tracks` / `state.track`, which the subtitles row reads as
+  /// the initial data for its stream builders.
+  final PlayerState playerState;
 
   /// The plane's notice that the output under the window changed, which is the
   /// only thing that moves [isHdrOutputSupported]'s answer while a sheet is up.
@@ -534,13 +742,17 @@ class _FakeSettingsPlayer implements Player {
   }
 
   @override
-  PlayerState get state => const PlayerState();
+  PlayerState get state => playerState;
 
   @override
   PlayerStreams get streams => _streams;
 
   @override
   String get playerType => 'exoplayer';
+
+  // Read by the track sheet the Subtitles row pushes.
+  @override
+  bool get supportsSecondarySubtitles => false;
 
   @override
   Future<void> setAudioPassthrough(bool enabled) async {}
@@ -554,6 +766,30 @@ class _FakeSettingsPlayer implements Player {
   Future<void> setRate(double rate) {
     return onSetRate?.call(rate) ?? Future<void>.value();
   }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Answers [getFileInfo] with a fixed tree and records what was asked for.
+class _FakeFileInfoClient implements MediaServerClient {
+  _FakeFileInfoClient(this.fileInfo);
+
+  final MediaFileInfo? fileInfo;
+  final requested = <String>[];
+
+  @override
+  ServerId get serverId => ServerId('server-1');
+
+  @override
+  Future<MediaFileInfo?> getFileInfo(MediaItem item) async {
+    requested.add(item.id);
+    return fileInfo;
+  }
+
+  // Called when the fixture's manager is torn down.
+  @override
+  void close() {}
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

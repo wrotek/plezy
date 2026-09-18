@@ -22,7 +22,13 @@ class TrackSheet extends StatelessWidget {
   final Player player;
   final TrackControlsState trackControlsState;
 
-  const TrackSheet({super.key, required this.player, required this.trackControlsState});
+  /// Drops the audio column and titles the sheet "Subtitles", for the
+  /// settings sheet's Subtitles row. The single-column layout, title and icon
+  /// already exist for items that only ever had subtitles — this just takes
+  /// that branch on purpose.
+  final bool subtitlesOnly;
+
+  const TrackSheet({super.key, required this.player, required this.trackControlsState, this.subtitlesOnly = false});
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +50,7 @@ class TrackSheet extends StatelessWidget {
             state.sourceAudioTracks.length > 1 &&
             state.onSwitchAudioStreamId != null;
         final useSourceSubtitles = state.canUseSourceSubtitles;
-        final showAudio = useSourceAudio || playerAudioTracks.length > 1;
+        final showAudio = !subtitlesOnly && (useSourceAudio || playerAudioTracks.length > 1);
         final showSubtitles = state.hasSubtitleControls(tracks);
 
         final String title;

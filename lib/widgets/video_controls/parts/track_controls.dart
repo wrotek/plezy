@@ -277,6 +277,7 @@ extension _PlexVideoControlsTrackMethods on _PlexVideoControlsState {
       // for Jellyfin items. The check uses the registered client type for
       // this metadata's serverId.
       subtitleSearchSupported: _isPlexBackedMetadata(),
+      isOfflinePlayback: widget.isOfflinePlayback,
     );
   }
 

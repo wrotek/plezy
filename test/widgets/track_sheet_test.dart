@@ -602,12 +602,59 @@ void main() {
       expect(find.text('Polski KONTRAST'), findsOneWidget);
     });
   });
+
+  group('TrackSheet subtitles-only mode', () {
+    // Two audio tracks, so the audio column would be shown by default. That is
+    // what makes its absence evidence of subtitlesOnly rather than of an item
+    // with nothing to offer.
+    final player = _FakeTrackSheetPlayer(
+      tracks: const Tracks(
+        audio: [
+          AudioTrack(id: 'a1', title: 'Stereo'),
+          AudioTrack(id: 'a2', title: 'Surround'),
+        ],
+        subtitle: [
+          SubtitleTrack.off,
+          SubtitleTrack(id: 's1', title: 'English', language: 'eng'),
+        ],
+      ),
+      track: const TrackSelection(
+        audio: AudioTrack(id: 'a1'),
+        subtitle: SubtitleTrack.off,
+      ),
+    );
+
+    testWidgets('drops the audio column and titles itself Subtitles', (tester) async {
+      await _pumpTrackSheet(
+        tester,
+        player: player,
+        trackControlsState: const TrackControlsState(),
+        subtitlesOnly: true,
+      );
+
+      expect(find.text('Stereo'), findsNothing);
+      expect(find.text('Surround'), findsNothing);
+      // The single-column branch already existed for items that only ever had
+      // subtitles; subtitlesOnly just takes it on purpose, title included.
+      expect(find.text(t.videoControls.subtitlesLabel), findsOneWidget);
+      expect(find.text(t.videoControls.tracksButton), findsNothing);
+      expect(find.text('English'), findsOneWidget);
+    });
+
+    testWidgets('still shows both columns when it is not set', (tester) async {
+      await _pumpTrackSheet(tester, player: player, trackControlsState: const TrackControlsState());
+
+      expect(find.text('Stereo'), findsOneWidget);
+      expect(find.text('English'), findsOneWidget);
+    });
+  });
 }
 
 Future<void> _pumpTrackSheet(
   WidgetTester tester, {
   required Player player,
   required TrackControlsState trackControlsState,
+  bool subtitlesOnly = false,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -617,7 +664,7 @@ Future<void> _pumpTrackSheet(
           body: SizedBox(
             width: 700,
             height: 400,
-            child: TrackSheet(player: player, trackControlsState: trackControlsState),
+            child: TrackSheet(player: player, trackControlsState: trackControlsState, subtitlesOnly: subtitlesOnly),
           ),
         ),
       ),

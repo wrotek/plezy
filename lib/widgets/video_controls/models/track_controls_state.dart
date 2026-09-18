@@ -84,6 +84,11 @@ class TrackControlsState {
   /// this is false.
   final bool subtitleSearchSupported;
 
+  /// Whether this is a downloaded file playing with no server behind it.
+  /// [canShowFileInfo] uses it: the tech-spec tree is fetched on demand, so
+  /// the row has to be hidden rather than fail once tapped.
+  final bool isOfflinePlayback;
+
   const TrackControlsState({
     this.availableVersions = const [],
     this.selectedMediaIndex = 0,
@@ -138,7 +143,19 @@ class TrackControlsState {
     this.mediaTitle,
     this.onSubtitleDownloaded,
     this.subtitleSearchSupported = true,
+    this.isOfflinePlayback = false,
   });
+
+  /// Whether the settings sheet should offer the File Info row.
+  ///
+  /// Container kinds carry no `Media`/`MediaSources` of their own, so
+  /// [MediaKind.hasFileInfo] is the server's own answer to "can I describe
+  /// files for this". The server id is what resolves the client that fetches
+  /// them, and offline playback has no server to ask.
+  bool get canShowFileInfo {
+    final item = metadata;
+    return !isOfflinePlayback && item != null && item.kind.hasFileInfo && (serverId?.isNotEmpty ?? false);
+  }
 
   /// Transcoded subtitle choices must be negotiated with the server and
   /// therefore replace the native rendition track list. A live session's
