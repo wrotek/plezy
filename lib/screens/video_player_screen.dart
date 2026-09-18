@@ -1622,7 +1622,12 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
         appLogger.w('VideoPlayerScreen: volume-max not applied', error: e);
       }
 
-      final savedVolume = settingsService.read(SettingsService.volume).clamp(0.0, maxVolume.toDouble());
+      // Phones and tablets route volume keys to the OS volume, so mpv stays at
+      // unity gain there instead of replaying a level the user cannot see.
+      final pinVolume = (Platform.isIOS || Platform.isAndroid) && !PlatformDetector.isTV();
+      final savedVolume = pinVolume
+          ? 100.0
+          : settingsService.read(SettingsService.volume).clamp(0.0, maxVolume.toDouble());
       await currentPlayer.setVolume(savedVolume);
       if (!_isPlayerInitializationCurrent(generation)) return;
       _volumeController = VideoVolumeController(

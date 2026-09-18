@@ -843,6 +843,8 @@ class _PlexVideoControlsState extends State<PlexVideoControls>
   int _edgeAdjustmentBaselineGeneration = 0;
   double? _lastKnownBrightness;
   double? _lastKnownMediaVolume;
+  Future<double?>? _mediaVolumeKeyTarget;
+  DateTime? _mediaVolumeKeyAt;
   DateTime? _lastEdgeAdjustmentWriteAt;
   double? _lastEdgeAdjustmentWriteValue;
   Timer? _edgeAdjustmentIndicatorHideTimer;

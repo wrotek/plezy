@@ -156,8 +156,8 @@ extension _PlexVideoControlsKeyEventMethods on _PlexVideoControlsState {
       onZoomIn: widget.onZoomIn,
       onZoomOut: widget.onZoomOut,
       onZoomReset: widget.onResetVideoZoom,
-      onVolumeUp: () => widget.volumeController.adjust(10),
-      onVolumeDown: () => widget.volumeController.adjust(-10),
+      onVolumeUp: () => _adjustVolume(10),
+      onVolumeDown: () => _adjustVolume(-10),
       onToggleMute: widget.volumeController.toggleMute,
       onLiveSeekBy: widget.onLiveSeekBy,
       onSpeedPersist: (rate) =>

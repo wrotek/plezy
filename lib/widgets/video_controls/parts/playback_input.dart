@@ -648,6 +648,40 @@ extension _PlexVideoControlsPlaybackInputMethods on _PlexVideoControlsState {
     });
   }
 
+  /// Volume shortcuts and trackpad scroll. On phones and tablets these move
+  /// the OS media volume, like the right-edge swipe, rather than mpv's own
+  /// gain: that one has no on-screen control there and persists silently.
+  void _adjustVolume(double percentDelta) {
+    if (!PlatformDetector.isMobile(context)) {
+      widget.volumeController.adjust(percentDelta);
+      return;
+    }
+    // The OS reports a new level asynchronously, so a burst chains off the
+    // last target instead of re-reading between key repeats.
+    final now = DateTime.now();
+    final lastAt = _mediaVolumeKeyAt;
+    final inBurst = lastAt != null && now.difference(lastAt) < const Duration(seconds: 1);
+    _mediaVolumeKeyAt = now;
+    final base = (inBurst ? _mediaVolumeKeyTarget : null) ?? _deviceAdjustmentService.getMediaVolume();
+    final target = base.then((current) {
+      if (!mounted) return null;
+      if (current == null) {
+        widget.volumeController.adjust(percentDelta);
+        return null;
+      }
+      final value = (current + percentDelta / 100).clamp(0.0, 1.0).toDouble();
+      _lastKnownMediaVolume = value;
+      unawaited(_deviceAdjustmentService.setMediaVolume(value));
+      if (!_edgeAdjustmentWasActive && _pendingEdgeAdjustmentSide == null) {
+        _edgeAdjustmentIndicator.value = (visible: true, side: MobileEdgeAdjustmentSide.right, value: value);
+        _finishEdgeAdjustment(suppressTap: false);
+      }
+      return value;
+    });
+    _mediaVolumeKeyTarget = target;
+    unawaited(target);
+  }
+
   void _cancelEdgeAdjustmentGesture() {
     _handleEdgeAdjustmentEvent(_edgeAdjustmentTracker.cancel());
   }
