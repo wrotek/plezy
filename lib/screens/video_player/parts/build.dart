@@ -160,47 +160,75 @@ extension _VideoPlayerBuildMethods on VideoPlayerScreenState {
     _pinchStartZoomScale = null;
   }
 
-  // Trackpad/mouse drag-to-dismiss.
+  // Drag-to-dismiss: press and drag down to close, with a trackpad click-drag
+  // or a single finger. The content follows the pointer; releasing past the
+  // threshold pops (the route's reverse transition continues the motion),
+  // otherwise it settles back.
   //
-  // On an iPad with a Magic Keyboard no *touch* gesture is free to mean "close
-  // the player": vertical drags near the edges are brightness and volume, the
-  // centre belongs to the content strip, and two-finger trackpad scrolling is
-  // already volume (_handlePointerSignal in video_controls/parts/visibility).
-  // A click-drag, though, is entirely unclaimed — every touch handler in
-  // playback_input is gated on PointerDeviceKind.touch and drops mouse events.
+  // The two inputs are recognised differently because they fight different
+  // things. A trackpad click reports as PointerDeviceKind.mouse, which every
+  // touch handler in playback_input drops, so a plain arena recognizer below
+  // (mouse-only) wins it once the finger affordances stop claiming mouse drags.
+  // A finger would lose that arena to the content strip's vertical drag, so
+  // touch is tracked from raw pointers in the controls instead
+  // (MobileDismissDragTracker) and reported here through dismissDrag. Both
+  // paths drive the same offset.
   //
-  // So: press and drag down with the pointer to close. Restricted to
-  // PointerDeviceKind.mouse, which is what a trackpad click reports as, and to
-  // mobile OSes — desktop keeps mouse drags for scrubbing and window dragging.
-  // The content follows the cursor; releasing past the threshold pops (the
-  // route's reverse transition continues the motion), otherwise it settles back.
+  // On iOS the picture is not part of this widget tree: it is a native view
+  // behind a transparent Flutter view, so translating the tree only moves the
+  // chrome. _syncNativeVideoOffset moves that view to match.
 
   void _onPointerDismissSettleTick() {
     _pointerDismissDrag.value =
         _pointerDismissSettleFrom * (1 - Curves.easeOutCubic.transform(_pointerDismissSettle.value));
   }
 
-  void _onPointerDismissStart(DragStartDetails details) => _pointerDismissSettle.stop();
-
-  void _onPointerDismissUpdate(DragUpdateDetails details) {
-    _pointerDismissDrag.value = math.max(0, _pointerDismissDrag.value + details.delta.dy);
+  void _dismissDragTo(double offset) {
+    _pointerDismissSettle.stop();
+    _pointerDismissDrag.value = math.max(0, offset);
   }
 
-  void _onPointerDismissEnd(DragEndDetails details) {
-    final offset = _pointerDismissDrag.value;
-    if (offset <= 0) return;
-    // Same thresholds as the overlay sheet system's drag-to-dismiss.
-    if (offset > MediaQuery.sizeOf(context).height * 0.25 || (details.primaryVelocity ?? 0) > 500) {
+  void _dismissDragEnd(double velocity) {
+    final shouldClose = dismissDragShouldClose(
+      offset: _pointerDismissDrag.value,
+      velocity: velocity,
+      viewportHeight: MediaQuery.sizeOf(context).height,
+    );
+    if (shouldClose) {
       unawaited(_handleBackButton());
     } else {
-      _onPointerDismissCancel();
+      _dismissDragCancel();
     }
   }
 
-  void _onPointerDismissCancel() {
+  void _dismissDragCancel() {
     if (_pointerDismissDrag.value <= 0) return;
     _pointerDismissSettleFrom = _pointerDismissDrag.value;
     _pointerDismissSettle.forward(from: 0);
+  }
+
+  MobileDismissDragHandlers get _touchDismissDragHandlers =>
+      MobileDismissDragHandlers(onUpdate: _dismissDragTo, onEnd: _dismissDragEnd, onCancel: _dismissDragCancel);
+
+  /// Keep the native video view level with the translated Flutter tree.
+  ///
+  /// Coalesced: one call in flight at a time, and whatever the offset is when
+  /// it returns is sent next, so a fast drag never queues a backlog of stale
+  /// positions behind the platform channel.
+  void _syncNativeVideoOffset() {
+    if (!mounted || _nativeVideoOffsetInFlight) return;
+    final currentPlayer = player;
+    final target = _pointerDismissDrag.value;
+    if (currentPlayer == null || target == _nativeVideoOffsetSent) return;
+
+    _nativeVideoOffsetInFlight = true;
+    _nativeVideoOffsetSent = target;
+    unawaited(
+      currentPlayer.setVideoOffset(target).catchError((Object _) {}).whenComplete(() {
+        _nativeVideoOffsetInFlight = false;
+        _syncNativeVideoOffset();
+      }),
+    );
   }
 
   Widget _wrapWithPointerDismiss(BuildContext context, {required Widget child}) {
@@ -208,15 +236,17 @@ extension _VideoPlayerBuildMethods on VideoPlayerScreenState {
     return GestureDetector(
       supportedDevices: const {PointerDeviceKind.mouse},
       behavior: HitTestBehavior.translucent,
-      onVerticalDragStart: _onPointerDismissStart,
-      onVerticalDragUpdate: _onPointerDismissUpdate,
-      onVerticalDragEnd: _onPointerDismissEnd,
-      onVerticalDragCancel: _onPointerDismissCancel,
+      onVerticalDragStart: (_) => _pointerDismissSettle.stop(),
+      onVerticalDragUpdate: (details) => _dismissDragTo(_pointerDismissDrag.value + details.delta.dy),
+      onVerticalDragEnd: (details) => _dismissDragEnd(details.primaryVelocity ?? 0),
+      onVerticalDragCancel: _dismissDragCancel,
       child: ValueListenableBuilder<double>(
         valueListenable: _pointerDismissDrag,
         child: child,
-        builder: (context, offset, child) =>
-            offset == 0 ? child! : Transform.translate(offset: Offset(0, offset), child: child),
+        // Always a Transform, even at rest: swapping it in and out changes the
+        // widget type above the player, which remounts the whole subtree —
+        // including the controls whose touch tracker is following the finger.
+        builder: (context, offset, child) => Transform.translate(offset: Offset(0, offset), child: child),
       ),
     );
   }
@@ -384,6 +414,7 @@ extension _VideoPlayerBuildMethods on VideoPlayerScreenState {
                         onRateRequested: _setPlaybackRate,
                         onPlayPauseRequested: _handleControlsTransport,
                         onBack: _handleBackButton,
+                        dismissDrag: _touchDismissDragHandlers,
                         onReachedEnd: ({skipAutoPlayCountdown = false}) =>
                             _onVideoCompleted(true, skipAutoPlayCountdown: skipAutoPlayCountdown),
                         canControl: authority.canControlPlayback,

@@ -1194,6 +1194,10 @@ abstract class PlayerBase with PlayerStreamControllersMixin implements Player {
   Future<void> setVideoZoom(double scale) async {}
 
   @override
+  // ignore: no-empty-block - base no-op, only iOS composites the picture behind Flutter
+  Future<void> setVideoOffset(double dy) async {}
+
+  @override
   Future<Map<String, dynamic>> getStats() async => const {};
 
   @override

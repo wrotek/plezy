@@ -81,6 +81,7 @@ import '../../i18n/strings.g.dart';
 import '../../focus/input_mode_tracker.dart';
 import 'models/track_controls_state.dart';
 import 'widgets/double_tap_feedback.dart';
+import 'helpers/mobile_dismiss_drag_tracker.dart';
 import 'helpers/mobile_edge_adjustment_tracker.dart';
 import 'helpers/two_finger_tap_tracker.dart';
 import 'widgets/linux_keep_alive.dart';
@@ -607,6 +608,11 @@ class PlexVideoControls extends StatefulWidget {
   /// Called when back button is pressed (for Watch Together session leave confirmation)
   final VoidCallback? onBack;
 
+  /// Finger swipe-down-to-close. The screen owns the offset and the close
+  /// decision; the controls only recognise the swipe, because the touch state
+  /// it has to respect (lock, long-press 2x, edge zones, content strip) lives here.
+  final MobileDismissDragHandlers? dismissDrag;
+
   /// Called when the video has effectively reached the end (e.g. credits extend
   /// to EOF and can't be seeked past). Parent should route this into its normal
   /// completion flow so the auto-play-next setting is honored.
@@ -733,6 +739,7 @@ class PlexVideoControls extends StatefulWidget {
     this.onPlayPauseRequested,
     this.onSeekCompleted,
     this.onBack,
+    this.dismissDrag,
     this.onReachedEnd,
     this.canControl = true,
     required this.canNavigateMediaItems,
@@ -817,6 +824,7 @@ class _PlexVideoControlsState extends State<PlexVideoControls>
   Timer? _singleTapTimer;
   final TwoFingerTapTracker _twoFingerTapTracker = TwoFingerTapTracker();
   final MobileEdgeAdjustmentTracker _edgeAdjustmentTracker = MobileEdgeAdjustmentTracker();
+  final MobileDismissDragTracker _dismissDragTracker = MobileDismissDragTracker();
   final DeviceAdjustmentService _deviceAdjustmentService = DeviceAdjustmentService.instance;
   DateTime? _suppressTouchTapUntil;
   final ValueNotifier<_EdgeAdjustmentIndicatorState> _edgeAdjustmentIndicator = ValueNotifier((

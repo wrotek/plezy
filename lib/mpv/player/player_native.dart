@@ -1173,6 +1173,12 @@ class PlayerNative extends PlayerBase {
   }
 
   @override
+  Future<void> setVideoOffset(double dy) async {
+    if (_nativeCoreUnavailable || audioOnly || !Platform.isIOS || !initialized) return;
+    await invoke('setVideoOffset', {'dy': dy});
+  }
+
+  @override
   Future<bool> setVideoFrameRate(
     double fps,
     int durationMs, {

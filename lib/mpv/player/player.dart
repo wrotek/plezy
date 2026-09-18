@@ -339,6 +339,14 @@ abstract class Player {
   /// no-op here and zoom via the `video-zoom` property.
   Future<void> setVideoZoom(double scale);
 
+  /// Shift the native video view down by [dy] logical pixels, for the player's
+  /// drag-to-dismiss.
+  ///
+  /// Only needed where the picture is a native view composited *behind* a
+  /// transparent Flutter view (iOS), which a Flutter transform cannot move.
+  /// A no-op elsewhere.
+  Future<void> setVideoOffset(double dy);
+
   /// Aggregated native playback stats (codecs, dimensions, dropped frames…).
   ///
   /// Returns an empty map on backends without native stats aggregation;

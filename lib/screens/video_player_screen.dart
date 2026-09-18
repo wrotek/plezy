@@ -107,6 +107,7 @@ import 'video_player/tv_background_suspend_state.dart';
 import 'video_player/visual_effects_controller.dart';
 import 'video_player/widgets/player_prompt_overlays.dart';
 import '../widgets/overlay_sheet.dart';
+import '../widgets/video_controls/helpers/mobile_dismiss_drag_tracker.dart';
 import '../widgets/video_controls/player_chrome_controller.dart';
 import '../widgets/video_controls/video_controls.dart';
 import '../widgets/video_controls/widgets/player_toast_indicator.dart';
@@ -688,6 +689,8 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
   final ValueNotifier<double> _pointerDismissDrag = ValueNotifier<double>(0);
   late final AnimationController _pointerDismissSettle;
   double _pointerDismissSettleFrom = 0;
+  bool _nativeVideoOffsetInFlight = false;
+  double _nativeVideoOffsetSent = 0;
   WatchTogetherProvider? _watchTogetherProvider;
   Object? _watchTogetherBinding;
   WatchPlaybackLease? _watchTogetherLease;
@@ -895,6 +898,7 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
 
     _pointerDismissSettle = AnimationController(vsync: this, duration: const Duration(milliseconds: 200))
       ..addListener(_onPointerDismissSettleTick);
+    _pointerDismissDrag.addListener(_syncNativeVideoOffset);
 
     // Fullscreen entered from here on is the player's to drop; whatever was
     // already fullscreen belongs to the app window (#1624).

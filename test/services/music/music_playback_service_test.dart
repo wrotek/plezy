@@ -404,6 +404,9 @@ class FakePlayer implements Player {
   Future<void> setVideoZoom(double scale) async {}
 
   @override
+  Future<void> setVideoOffset(double dy) async {}
+
+  @override
   Future<Map<String, dynamic>> getStats() async => {};
 
   @override

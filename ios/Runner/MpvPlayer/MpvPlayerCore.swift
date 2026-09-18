@@ -12,6 +12,10 @@ class MpvPlayerCore: MpvPlayerCoreBase {
   private weak var window: UIWindow?
   private var mainBlankView: UIView?
   private var isVisible = false
+  /// Drag-to-dismiss offset, in points: requested, and currently applied to
+  /// the container's position. See `setVideoOffset`.
+  private var videoOffsetY: CGFloat = 0
+  private var appliedVideoOffsetY: CGFloat = 0
   private static var activeDisplayCriteriaKey: String?
   private var lastDisplayCriteriaMutation: DisplayCriteriaMutation = .skipped
   #if os(tvOS)
@@ -75,7 +79,11 @@ class MpvPlayerCore: MpvPlayerCoreBase {
     guard containerView != nil else { return }
 
     isVisible = visible
-    if visible { refreshExternalDisplayAttachment() }
+    if visible {
+      videoOffsetY = 0
+      applyVideoOffset()
+      refreshExternalDisplayAttachment()
+    }
     setContainerHidden(!visible)
     if !visible { mainBlankView?.isHidden = true }
   }
@@ -92,6 +100,9 @@ class MpvPlayerCore: MpvPlayerCoreBase {
         containerView.frame = window.bounds
       }
       fitVideoLayer(videoLayer, in: containerView)
+      // The frame above is the resting placement; put the drag offset back on it.
+      appliedVideoOffsetY = 0
+      applyVideoOffset()
 
       mainBlankView?.frame = window?.bounds ?? .zero
 
@@ -110,6 +121,39 @@ class MpvPlayerCore: MpvPlayerCoreBase {
   private func fitVideoLayer(_ layer: MpvVideoLayer, in container: UIView) {
     layer.bounds = CGRect(origin: .zero, size: container.bounds.size)
     layer.position = CGPoint(x: container.bounds.midX, y: container.bounds.midY)
+  }
+
+  /// Shift the picture down for the player's drag-to-dismiss.
+  ///
+  /// The video is a native view behind a transparent Flutter view, so the
+  /// Flutter side translating its own tree only moves the chrome; this moves
+  /// the picture with it.
+  ///
+  /// It moves the container's *position*, not a transform. A container-level
+  /// transform is not guaranteed to reach the video plane — `setVideoZoom`
+  /// found a container `sublayerTransform` ignored by it — while position is
+  /// what layout already drives. Bounds stay put, so the VO's bounds KVO stays
+  /// quiet, and custom zoom (a transform on the layer itself) is untouched.
+  func setVideoOffset(_ dy: Double) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      self.videoOffsetY = CGFloat(dy)
+      self.withoutLayerAnimations { self.applyVideoOffset() }
+    }
+  }
+
+  /// Applied as a delta against what is already applied, so no resting
+  /// position has to be remembered — anything that lays the container out at
+  /// rest resets `appliedVideoOffsetY` first. Only the main-window placement
+  /// follows the gesture: on an external display the picture is not what the
+  /// finger is dragging.
+  private func applyVideoOffset() {
+    guard let containerView else { return }
+    let follows = window != nil && containerView.superview === window
+    let target = follows ? videoOffsetY : 0
+    guard target != appliedVideoOffsetY else { return }
+    containerView.center.y += target - appliedVideoOffsetY
+    appliedVideoOffsetY = target
   }
 
   /// Apply custom viewer zoom by scaling the video layer about its center.
@@ -191,6 +235,8 @@ class MpvPlayerCore: MpvPlayerCoreBase {
 
       containerView.frame = superview.bounds
       containerView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+      appliedVideoOffsetY = 0
+      applyVideoOffset()
     }
   }
 

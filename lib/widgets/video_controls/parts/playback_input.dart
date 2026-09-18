@@ -282,6 +282,15 @@ extension _PlexVideoControlsPlaybackInputMethods on _PlexVideoControlsState {
 
   void _handleTouchPointerDown(PointerDownEvent event) {
     if (event.kind != PointerDeviceKind.touch) return;
+    // Fed ahead of the chord early-return so the tracker counts every finger.
+    _handleDismissDragEvent(
+      _dismissDragTracker.pointerDown(
+        event.pointer,
+        event.position,
+        event.timeStamp,
+        canStart: _dismissDragCanStartAt(event.position),
+      ),
+    );
     _twoFingerTapTracker.pointerDown(event.pointer, event.position);
     if (_twoFingerTapTracker.isChordActive) {
       _suppressTouchTaps();
@@ -303,6 +312,11 @@ extension _PlexVideoControlsPlaybackInputMethods on _PlexVideoControlsState {
 
   void _handleTouchPointerMove(PointerMoveEvent event) {
     if (event.kind != PointerDeviceKind.touch) return;
+    _handleDismissDragEvent(
+      _mobileTouchGesturesAllowed && !_isLongPressing
+          ? _dismissDragTracker.pointerMove(event.pointer, event.position, event.timeStamp)
+          : _dismissDragTracker.cancel(),
+    );
     _twoFingerTapTracker.pointerMove(event.pointer, event.position);
     if (_twoFingerTapTracker.isChordActive) {
       _suppressTouchTaps();
@@ -323,6 +337,7 @@ extension _PlexVideoControlsPlaybackInputMethods on _PlexVideoControlsState {
 
   void _handleTouchPointerUp(PointerUpEvent event) {
     if (event.kind != PointerDeviceKind.touch) return;
+    _handleDismissDragEvent(_dismissDragTracker.pointerUp(event.pointer, event.position, event.timeStamp));
     final isTwoFingerTap = _twoFingerTapTracker.pointerUp(event.pointer, event.position);
     final hit = _edgeAdjustmentSurfaceHit(event.position);
     _handleEdgeAdjustmentEvent(_edgeAdjustmentTracker.pointerUp(event.pointer, hit?.position ?? event.localPosition));
@@ -345,6 +360,7 @@ extension _PlexVideoControlsPlaybackInputMethods on _PlexVideoControlsState {
 
   void _handleTouchPointerCancel(PointerCancelEvent event) {
     if (event.kind != PointerDeviceKind.touch) return;
+    _handleDismissDragEvent(_dismissDragTracker.pointerCancel(event.pointer));
     _twoFingerTapTracker.pointerCancel(event.pointer);
     _handleEdgeAdjustmentEvent(_edgeAdjustmentTracker.pointerCancel(event.pointer));
     if (_twoFingerTapTracker.isChordActive) _suppressTouchTaps();
@@ -356,6 +372,32 @@ extension _PlexVideoControlsPlaybackInputMethods on _PlexVideoControlsState {
         !_isScreenLocked &&
         !_pipService.isPipActive.value &&
         !widget.chromeController.contentStripVisible;
+  }
+
+  bool _dismissDragCanStartAt(Offset globalPosition) {
+    if (widget.dismissDrag == null || !_mobileTouchGesturesAllowed || _isLongPressing) return false;
+    final hit = _edgeAdjustmentSurfaceHit(globalPosition);
+    if (hit == null) return false;
+    return mobileDismissDragCanStartAt(
+      position: hit.position,
+      size: hit.size,
+      isEdgeSideEnabled: _edgeAdjustmentGestureEnabled,
+    );
+  }
+
+  void _handleDismissDragEvent(MobileDismissDragEvent event) {
+    final handlers = widget.dismissDrag;
+    if (handlers == null) return;
+    switch (event.type) {
+      case MobileDismissDragEventType.none:
+        return;
+      case MobileDismissDragEventType.update:
+        handlers.onUpdate(event.offset);
+      case MobileDismissDragEventType.ended:
+        handlers.onEnd(event.velocity);
+      case MobileDismissDragEventType.cancelled:
+        handlers.onCancel();
+    }
   }
 
   ({Offset position, Size size})? _edgeAdjustmentSurfaceHit(Offset globalPosition) {
@@ -841,6 +883,8 @@ extension _PlexVideoControlsPlaybackInputMethods on _PlexVideoControlsState {
   /// Handle long-press start - activate 2x speed
   void _handleLongPressStart() {
     if (!widget.canControl || widget.isLive) return;
+    // Holding for 2x and then sliding the finger must not become a close.
+    _handleDismissDragEvent(_dismissDragTracker.cancel());
 
     _setControlsState(() {
       _isLongPressing = true;

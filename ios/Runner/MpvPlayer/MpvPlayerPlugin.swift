@@ -91,6 +91,8 @@ class MpvPlayerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, MpvPluginS
       handleSetVisible(call: call, result: result)
     case "setVideoZoom":
       handleSetVideoZoom(call: call, result: result)
+    case "setVideoOffset":
+      handleSetVideoOffset(call: call, result: result)
     case "isInitialized":
       result(playerCore?.isInitialized ?? false)
     case "updateFrame":
@@ -447,6 +449,17 @@ class MpvPlayerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, MpvPluginS
         result(nil)
       }
     }
+  }
+
+  private func handleSetVideoOffset(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let args = call.arguments as? [String: Any],
+      let dy = doubleValue(args["dy"])
+    else {
+      result(FlutterError(code: "INVALID_ARGS", message: "setVideoOffset requires dy", details: nil))
+      return
+    }
+    playerCore?.setVideoOffset(dy)
+    result(nil)
   }
 
   private func handleSetVideoZoom(call: FlutterMethodCall, result: @escaping FlutterResult) {
