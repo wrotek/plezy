@@ -519,8 +519,7 @@ class SettingsService extends BaseSharedPreferencesService {
 
   /// Render text subtitles (SRT/VTT/mov_text) anchored to the physical screen
   /// instead of the video rect, so they land in the letterbox bars of
-  /// widescreen video (#1730). ExoPlayer backend only; mpv already places
-  /// plaintext subtitles in the margins by default (sub-use-margins=yes).
+  /// widescreen video (#1730). ExoPlayer: anchorToScreen; mpv: sub-use-margins.
   static const subtitleAnchorToScreen = BoolPref('subtitle_anchor_to_screen');
   static const cleanedOldImageCache = BoolPref('cleaned_old_image_cache');
   static const rememberTrackSelections = BoolPref('remember_track_selections', defaultValue: true);

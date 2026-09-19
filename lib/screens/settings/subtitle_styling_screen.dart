@@ -42,9 +42,6 @@ class SubtitleStylingScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Anchor-to-screen is an ExoPlayer text-subtitle knob; mpv already places
-    // plaintext subtitles in the letterbox margins by default.
-    final exoActive = Platform.isAndroid && SettingsService.instance.read(SettingsService.useExoPlayer);
     return SettingsPage(
       title: Text(t.screens.subtitleStyling),
       children: [
@@ -111,13 +108,12 @@ class SubtitleStylingScreen extends StatelessWidget {
               min: 0,
               max: 100,
             ),
-            if (exoActive)
-              SettingSwitchTile(
-                pref: SettingsService.subtitleAnchorToScreen,
-                icon: Symbols.fit_screen_rounded,
-                title: t.subtitlingStyling.anchorToScreen,
-                subtitle: t.subtitlingStyling.anchorToScreenDescription,
-              ),
+            SettingSwitchTile(
+              pref: SettingsService.subtitleAnchorToScreen,
+              icon: Symbols.fit_screen_rounded,
+              title: t.subtitlingStyling.anchorToScreen,
+              subtitle: t.subtitlingStyling.anchorToScreenDescription,
+            ),
             SettingSwitchTile(
               pref: SettingsService.subtitleBold,
               icon: Symbols.format_bold_rounded,

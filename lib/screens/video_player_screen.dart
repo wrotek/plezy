@@ -1442,6 +1442,12 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
       await currentPlayer.setProperty('sub-ass-override', settingsService.read(SettingsService.subAssOverride).name);
       await currentPlayer.setProperty('sub-ass-video-aspect-override', '1');
       await currentPlayer.setProperty('sub-pos', settingsService.read(SettingsService.subtitlePosition).toString());
+      // mpv's default (sub-use-margins=yes) drops text subtitles into the
+      // letterbox bars; keep them inside the picture unless Anchor to Screen.
+      await currentPlayer.setProperty(
+        'sub-use-margins',
+        settingsService.read(SettingsService.subtitleAnchorToScreen) ? 'yes' : 'no',
+      );
 
       if (Platform.isIOS) {
         await currentPlayer.setProperty('audio-exclusive', 'yes');
